@@ -38,10 +38,9 @@ Once you have created a repository from this template and the `Template cleanup`
 Note that it is easiest to push to a repository if you set up SSH with Github, please see the [related documentation](https://docs.github.com/en/free-pro-team@latest/github/authenticating-to-github/connecting-to-github-with-ssh). SSH is required for pushing to a Github repository when using two-factor authentication.
 
 ```sh
-git clone git@github.com:%REPOSITORY%.git
-cd %NAME%
+git clone git@github.com:LoveLonelyTime/chisel_test.git
+cd chisel_test
 ```
-(The variables wrapped in `%` will be filled in by the template cleanup) <!-- #REMOVE-ON-CLEANUP# -->
 
 #### Set project organization and name in build.sbt
 
@@ -62,7 +61,7 @@ For more information about a license, check out the [Github Docs](https://docs.g
 
 #### Commit your changes
 ```sh
-git commit -m 'Starting %NAME%'
+git commit -m 'Starting chisel_test'
 git push origin main
 ```
 
@@ -77,7 +76,7 @@ sbt test
 
 Alternatively, if you use Mill:
 ```sh
-mill %NAME%.test
+mill chisel_test.test
 ```
 
 You should see a whole bunch of output that ends with something like the following lines
