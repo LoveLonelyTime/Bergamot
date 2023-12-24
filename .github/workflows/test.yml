@@ -1,0 +1,28 @@
+name: Continuous Integration
+
+on:
+  push:
+    tags: ['*']
+    branches: ['main']
+  pull_request:
+
+jobs:
+  ci:
+    name: ci
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Cleanup
+        run: sed -i "s/%NAME%/test/g" build.sc
+      - name: Cache Scala
+        uses: coursier/cache-action@v6
+      - name: Setup Scala
+        uses: coursier/setup-action@v1
+        with:
+          jvm: adopt:11
+          apps: sbt mill
+      - name: SBT Test
+        run: sbt test
+      - name: mill Test
+        run: mill _.test
