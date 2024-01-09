@@ -329,6 +329,9 @@ project/plugins/project/
 # Scala-Metals
 .metals/
 
+# Bloop
+.bloop/
+
 ### Java template
 *.class
 
