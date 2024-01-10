@@ -1,7 +1,8 @@
-package lltriscv.core
+package lltriscv.core.fetch
 
 import chisel3._
 import chisel3.util._
+import lltriscv.core.DataType
 
 /** The entry represents one instruction that has been fetched by fetcher.
   */

@@ -1,4 +1,4 @@
-package lltriscv.core.record
+package lltriscv.core.broadcast
 
 import chisel3._
 import chisel3.util._

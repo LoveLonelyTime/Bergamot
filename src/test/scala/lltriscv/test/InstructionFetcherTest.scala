@@ -4,7 +4,7 @@ import chisel3._
 import chiseltest._
 import org.scalatest.freespec.AnyFreeSpec
 
-import lltriscv.core._
+import lltriscv.core.fetch.InstructionFetcher
 
 class InstructionFetcherTest extends AnyFreeSpec with ChiselScalatestTester {
   "InstructionFetcher should be OK" in {

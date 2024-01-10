@@ -23,5 +23,5 @@ object InstructionType extends ChiselEnum {
 }
 
 object ExecuteQueueType extends ChiselEnum {
-  val memory, alu, branch, none = Value
+  val none, memory, alu, branch = Value
 }
