@@ -24,7 +24,7 @@ class InstructionFetcherTest extends AnyFreeSpec with ChiselScalatestTester {
               .bits(i)
               .pc
               .poke((dut.io.fetcher.pc.bits.peekInt() + i).U)
-            dut.io.fetcher.instruction.bits(i).vaild.poke(true.B)
+            dut.io.fetcher.instruction.bits(i).valid.poke(true.B)
           }
           for (i <- group.length until width) {
             dut.io.fetcher.instruction.bits(i).instruction.poke(0.U)
@@ -32,7 +32,7 @@ class InstructionFetcherTest extends AnyFreeSpec with ChiselScalatestTester {
               .bits(i)
               .pc
               .poke(0.U)
-            dut.io.fetcher.instruction.bits(i).vaild.poke(false.B)
+            dut.io.fetcher.instruction.bits(i).valid.poke(false.B)
           }
           dut.io.fetcher.instruction.valid.poke(true.B)
 
@@ -71,7 +71,7 @@ class InstructionFetcherTest extends AnyFreeSpec with ChiselScalatestTester {
               .bits(i)
               .pc
               .poke((dut.io.fetcher.pc.bits.peekInt() + i).U)
-            dut.io.fetcher.instruction.bits(i).vaild.poke(true.B)
+            dut.io.fetcher.instruction.bits(i).valid.poke(true.B)
           }
           for (i <- group.length until width) {
             dut.io.fetcher.instruction.bits(i).instruction.poke(0.U)
@@ -79,7 +79,7 @@ class InstructionFetcherTest extends AnyFreeSpec with ChiselScalatestTester {
               .bits(i)
               .pc
               .poke(0.U)
-            dut.io.fetcher.instruction.bits(i).vaild.poke(false.B)
+            dut.io.fetcher.instruction.bits(i).valid.poke(false.B)
           }
           dut.io.fetcher.instruction.valid.poke(true.B)
 
@@ -104,7 +104,7 @@ class InstructionFetcherTest extends AnyFreeSpec with ChiselScalatestTester {
               println(
                 s"--Index: ${group._2}, Instruction: ${group._1.instruction
                     .peekInt()}, PC: ${group._1.pc
-                    .peekInt()}, Vaild: ${group._1.vaild.peekBoolean()}"
+                    .peekInt()}, valid: ${group._1.valid.peekBoolean()}"
               )
             })
           }

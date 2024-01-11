@@ -3,46 +3,90 @@ package lltriscv.core.execute
 import chisel3._
 import chisel3.util._
 import lltriscv.core.broadcast.DataBroadcastIO
+import lltriscv.core.ExecuteQueueType
+import lltriscv.utils.CoreUtils
 
-class ExecuteQueue(depth: Int) extends Module {
-  val io = IO(new Bundle {
-    val enq = Flipped(DecoupledIO(new ExecuteEntry()))
-    val deq = DecoupledIO(new ExecuteEntry())
-    val broadcast = Flipped(new DataBroadcastIO())
-  })
+/*
+ * Execute queue (aka reservation station)
+ *
+ * Copyright (C) 2024-2025 LoveLonelyTime
+ */
+
+/** ExecuteQueueEnqueueIO
+  */
+class ExecuteQueueEnqueueIO extends Bundle {
+  val enq = DecoupledIO(new ExecuteEntry()) // Data interface
+  val queueType =
+    Input(ExecuteQueueType()) // Tell the issue stage the queue type, hardwired
 }
 
-class InOrderExecuteQueue(depth: Int) extends ExecuteQueue(depth) {
-  private val queue = Reg(Vec(depth, new ExecuteQueueEntry()))
+/** The abstract class ExecuteQueue
+  *
+  * Describe the basic interface
+  *
+  * @param depth
+  *   Queue depth
+  * @param queueType
+  *   Queue type
+  */
+abstract class ExecuteQueue(depth: Int, queueType: ExecuteQueueType.Type)
+    extends Module {
+  val io = IO(new Bundle {
+    // Enq and deq interface
+    val enqAndType = Flipped(new ExecuteQueueEnqueueIO())
+    val deq = DecoupledIO(new ExecuteEntry())
 
-  def counter(depth: Int, incr: Bool): (UInt, UInt) = {
-    val cntReg = RegInit(0.U(log2Ceil(depth).W))
-    val nextVal = Mux(cntReg === (depth - 1).U, 0.U, cntReg + 1.U)
-    when(incr) {
-      cntReg := nextVal
-    }
-    (cntReg, nextVal)
-  }
+    // Broadcast interface
+    val broadcast = Flipped(new DataBroadcastIO())
+  })
+
+  require(depth > 0, "Execute queue depth must be greater than 0")
+
+  // Hardwired
+  io.enqAndType.queueType := queueType
+}
+
+/** The in ordered implementation of execute queue
+  *
+  * This execute queue is in ordered, which is suitable for instruction sets
+  * that require in ordered within the queue
+  *
+  * Implementation using read/write pointer queue
+  *
+  * @param depth
+  *   Queue depth
+  * @param queueType
+  *   Queue type
+  */
+class InOrderedExecuteQueue(depth: Int, queueType: ExecuteQueueType.Type)
+    extends ExecuteQueue(depth, queueType) {
+
+  // Read/Wirte pointers
+  private val queue = Reg(Vec(depth, new ExecuteQueueEntry()))
 
   val incrRead = WireInit(false.B)
   val incrWrite = WireInit(false.B)
-  val (readPtr, nextRead) = counter(depth, incrRead)
-  val (writePtr, nextWrite) = counter(depth, incrWrite)
+  val (readPtr, nextRead) = CoreUtils.pointer(depth, incrRead)
+  val (writePtr, nextWrite) = CoreUtils.pointer(depth, incrWrite)
 
   val emptyReg = RegInit(true.B)
   val fullReg = RegInit(false.B)
 
-  io.enq.ready := !fullReg
+  io.enqAndType.enq.ready := !fullReg
 
-  // Inorder arbitration logic
-  io.deq.valid := !emptyReg &&
-    !queue(readPtr).rs1.pending &&
-    !queue(readPtr).rs2.pending
+  // In ordered arbitration logic
+  io.deq.valid := !emptyReg && // Not empty
+    (
+      (!queue(readPtr).rs1.pending &&
+        !queue(readPtr).rs2.pending) || // Data is ready
+        !queue(readPtr).valid // Or invalid
+    )
 
   io.deq.bits := queue(readPtr)
 
-  private val op =
-    (io.enq.valid && io.enq.ready) ## (io.deq.valid && io.deq.ready)
+  // Queue logic
+  private val op = (io.enqAndType.enq.valid && io.enqAndType.enq.ready) ##
+    (io.deq.valid && io.deq.ready)
   private val doWrite = WireDefault(false.B)
 
   switch(op) {
@@ -70,27 +114,13 @@ class InOrderExecuteQueue(depth: Int) extends ExecuteQueue(depth) {
     i <- 0 until depth;
     j <- 0 until 2
   ) {
-    when(
-      queue(i).rs1.pending &&
-        io.broadcast.entries(j).valid &&
-        queue(i).rs1.receipt === io.broadcast.entries(j).receipt
-    ) { // rs1
-      queue(i).rs1.pending := false.B
-      queue(i).rs1.receipt := io.broadcast.entries(j).data
-    }
-
-    when(
-      queue(i).rs2.pending &&
-        io.broadcast.entries(j).valid &&
-        queue(i).rs2.receipt === io.broadcast.entries(j).receipt
-    ) { // rs2
-      queue(i).rs2.pending := false.B
-      queue(i).rs2.receipt := io.broadcast.entries(j).data
-    }
+    // rs1 and rs2
+    CoreUtils.matchBroadcast(queue(i).rs1, io.broadcast.entries(j))
+    CoreUtils.matchBroadcast(queue(i).rs2, io.broadcast.entries(j))
   }
 
   // Write logic
   when(doWrite) {
-    queue(writePtr) := io.enq.bits
+    queue(writePtr) := io.enqAndType.enq.bits
   }
 }

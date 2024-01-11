@@ -6,62 +6,70 @@ import chisel3.util._
 import lltriscv.core._
 import lltriscv.core.broadcast._
 
+/*
+ * Decode entry
+ *
+ * Copyright (C) 2024-2025 LoveLonelyTime
+ */
+
+/** RISC-V instruction types
+  */
+object InstructionType extends ChiselEnum {
+  /*
+   * UK: Unknown (Illegal instruction exception)
+   * R: Register
+   * I: Immediate
+   * S: Store
+   * B: Branch
+   * U: Upper
+   * J: Jump
+   */
+  val UK, R, I, S, B, U, J = Value
+}
+
+/** Decode stage entry
+  *
+  * The input of decode stage
+  */
 class DecodeStageEntry extends Bundle {
-  // Instruction
-  val instruction = DataType.instructionType.cloneType
-  // Corresponding PC
-  val pc = DataType.pcType.cloneType
-  // Validity
-  val vaild = Bool()
+  val instruction =
+    DataType.instructionType.cloneType // 32-bits raw instruction
+  val pc = DataType.pcType.cloneType // Corresponding PC
+  val valid = Bool() // Validity
 }
 
+/** Register mapping stage entry
+  *
+  * The input of register mapping stage
+  */
 class RegisterMappingStageEntry extends Bundle {
-  // opcode
-  val opcode = DataType.opcodeType.cloneType
-  // Instruction Type
-  val instructionType = InstructionType()
-  // Execute queue
-  val executeQueue = ExecuteQueueType()
-  // rs1
-  val rs1 = DataType.registerType.cloneType
-  // rs2
-  val rs2 = DataType.registerType.cloneType
-  // rd
-  val rd = DataType.registerType.cloneType
-  // func3
-  val func3 = DataType.func3Type.cloneType
-  // func7
-  val func7 = DataType.func7Type.cloneType
-  // Immediate
-  val imm = DataType.immediateType.cloneType
-
-  // Corresponding PC
-  val pc = DataType.pcType.cloneType
-  // Validity
-  val vaild = Bool()
+  val opcode = DataType.opcodeType.cloneType // opcode
+  val instructionType = InstructionType() // Instruction Type
+  val executeQueue = ExecuteQueueType() // Execute queue
+  val rs1 = DataType.registerType.cloneType // rs1
+  val rs2 = DataType.registerType.cloneType // rs2
+  val rd = DataType.registerType.cloneType // rd
+  val func3 = DataType.func3Type.cloneType // func3
+  val func7 = DataType.func7Type.cloneType // func7
+  val imm = DataType.immediateType.cloneType // Immediate
+  val pc = DataType.pcType.cloneType // Corresponding PC
+  val valid = Bool() // Validity
 }
 
+/** Issue stage entry
+  *
+  * The input of issue stage
+  */
 class IssueStageEntry extends Bundle {
-  // opcode
-  val opcode = DataType.opcodeType.cloneType
-  // Instruction Type
-  val instructionType = InstructionType()
-  // Execute queue
-  val executeQueue = ExecuteQueueType()
-  // rs1
-  val rs1 = new DataBroadcastSlotEntry()
-  // rs2
-  val rs2 = new DataBroadcastSlotEntry()
-  // rd
-  val rd = DataType.receiptType.cloneType
-  // func3
-  val func3 = DataType.func3Type.cloneType
-  // func7
-  val func7 = DataType.func7Type.cloneType
-  // Immediate
-  val imm = DataType.immediateType.cloneType
-  // Corresponding PC
-  val pc = DataType.pcType.cloneType
-  // Validity
-  val vaild = Bool()
+  val opcode = DataType.opcodeType.cloneType // opcode
+  val instructionType = InstructionType() // Instruction Type
+  val executeQueue = ExecuteQueueType() // Execute queue
+  val rs1 = new DataBroadcastSlotEntry() // rs1
+  val rs2 = new DataBroadcastSlotEntry() // rs2
+  val rd = DataType.receiptType.cloneType // rd
+  val func3 = DataType.func3Type.cloneType // func3
+  val func7 = DataType.func7Type.cloneType // func7
+  val imm = DataType.immediateType.cloneType // Immediate
+  val pc = DataType.pcType.cloneType // Corresponding PC
+  val valid = Bool() // Validity
 }

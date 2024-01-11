@@ -3,54 +3,59 @@ package lltriscv.core.execute
 import chisel3._
 import chisel3.util._
 import lltriscv.core._
+import lltriscv.core.decode._
 import lltriscv.core.broadcast.DataBroadcastSlotEntry
 
-class ExecuteEntry extends Bundle {
-  // opcode
-  val opcode = DataType.opcodeType.cloneType
-  // Instruction Type
-  val instructionType = InstructionType()
-  // Execute queue
-  val executeQueue = ExecuteQueueType()
-  // rs1
-  val rs1 = new DataBroadcastSlotEntry()
-  // rs2
-  val rs2 = new DataBroadcastSlotEntry()
-  // rd
-  val rd = DataType.receiptType.cloneType
-  // func3
-  val func3 = DataType.func3Type.cloneType
-  // func7
-  val func7 = DataType.func7Type.cloneType
-  // Immediate
-  val imm = DataType.immediateType.cloneType
-  // Corresponding PC
-  val pc = DataType.pcType.cloneType
-  // Validity
-  val vaild = Bool()
+/*
+ * Execute entry
+ *
+ * Copyright (C) 2024-2025 LoveLonelyTime
+ */
+
+/** Execute queue entry
+  *
+  * The input of reservation station
+  */
+class ExecuteQueueEntry extends Bundle {
+  val opcode = DataType.opcodeType.cloneType // opcode
+  val instructionType = InstructionType() // Instruction Type
+  val executeQueue = ExecuteQueueType() // Execute queue
+  val rs1 = new DataBroadcastSlotEntry() // rs1
+  val rs2 = new DataBroadcastSlotEntry() // rs2
+  val rd = DataType.receiptType.cloneType // rd
+  val func3 = DataType.func3Type.cloneType // func3
+  val func7 = DataType.func7Type.cloneType // func7
+  val imm = DataType.immediateType.cloneType // Immediate
+  val pc = DataType.pcType.cloneType // Corresponding PC
+  val valid = Bool() // Validity
 }
 
-class ExecuteQueueEntry extends Bundle {
-  // opcode
-  val opcode = DataType.opcodeType.cloneType
-  // Instruction Type
-  val instructionType = InstructionType()
-  // Execute queue
-  val executeQueue = ExecuteQueueType()
-  // rs1
-  val rs1 = new DataBroadcastSlotEntry()
-  // rs2
-  val rs2 = new DataBroadcastSlotEntry()
-  // rd
-  val rd = DataType.receiptType.cloneType
-  // func3
-  val func3 = DataType.func3Type.cloneType
-  // func7
-  val func7 = DataType.func7Type.cloneType
-  // Immediate
-  val imm = DataType.immediateType.cloneType
-  // Corresponding PC
-  val pc = DataType.pcType.cloneType
-  // Validity
-  val vaild = Bool()
+/** Execute entry
+  *
+  * The output of reservation station, representing an executable instruction
+  */
+class ExecuteEntry extends Bundle {
+  val opcode = DataType.opcodeType.cloneType // opcode
+  val instructionType = InstructionType() // Instruction Type
+  val executeQueue = ExecuteQueueType() // Execute queue
+  val rs1 = new DataBroadcastSlotEntry() // rs1
+  val rs2 = new DataBroadcastSlotEntry() // rs2
+  val rd = DataType.receiptType.cloneType // rd
+  val func3 = DataType.func3Type.cloneType // func3
+  val func7 = DataType.func7Type.cloneType // func7
+  val imm = DataType.immediateType.cloneType // Immediate
+  val pc = DataType.pcType.cloneType // Corresponding PC
+  val valid = Bool() // Validity
+}
+
+/** Execute result entry
+  *
+  * The output of execute component
+  */
+class ExecuteResultEntry extends Bundle {
+  val result =
+    DataType.operationType.cloneType // General execution result, writeback to rd
+  val rd = DataType.receiptType.cloneType // Destination receipt
+  val pc = DataType.pcType.cloneType // Corresponding PC
+  val valid = Bool() // Validity
 }

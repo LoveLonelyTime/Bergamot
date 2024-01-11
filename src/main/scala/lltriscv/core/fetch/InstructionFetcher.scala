@@ -12,7 +12,7 @@ class FetchedInstructionEntry extends Bundle {
   // Corresponding PC
   val pc = DataType.pcType.cloneType
   // Validity
-  val vaild = Bool()
+  val valid = Bool()
 }
 
 /** The fetcher interface with instruction cache.
@@ -67,7 +67,7 @@ class InstructionFetcherDatapath(fetchWidth: Int) extends Module {
     // Counting the number of valid instructions
     io.fetchNumber := io.fetcher.instruction.bits.foldLeft(
       0.U(unsignedBitLength(fetchWidth).W)
-    )((a, b) => a + Mux(b.vaild, 1.U, 0.U))
+    )((a, b) => a + Mux(b.valid, 1.U, 0.U))
   }.otherwise {
     io.pcReady := false.B
     io.fetchNumber := 0.U

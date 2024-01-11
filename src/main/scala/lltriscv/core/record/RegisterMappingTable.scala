@@ -197,39 +197,30 @@ class RegisterMappingTable extends Module {
   /*---------------------------------Mapping logic end-------------------------------*/
 
   /*---------------------------------Table logic start-------------------------------*/
+  for (i <- 0 until 32) {
+    when(
+      io.broadcast.entries(0).receipt === table(i).receipt &&
+        table(i).busy &&
+        io.broadcast.entries(0).valid
+    ) {
+      table(i).busy := false.B
+      table(i).receipt := io.broadcast.entries(0).data
+    }
+    when(
+      io.broadcast.entries(1).receipt === table(i).receipt &&
+        table(i).busy &&
+        io.broadcast.entries(1).valid
+    ) {
+      table(i).busy := false.B
+      table(i).receipt := io.broadcast.entries(1).data
+    }
+  }
 
   when(io.mapping.valid && io.mapping.ready) {
-    when(io.mapping.regGroup(0).rd === io.mapping.regGroup(1).rd) {
-      table(io.mapping.regGroup(1).rd).busy := true.B
-      table(io.mapping.regGroup(1).rd).receipt := io.mapping.mappingGroup(1).rd
-    }.otherwise {
-      table(io.mapping.regGroup(0).rd).busy := true.B
-      table(io.mapping.regGroup(0).rd).receipt := io.mapping.mappingGroup(0).rd
-      table(io.mapping.regGroup(1).rd).busy := true.B
-      table(io.mapping.regGroup(1).rd).receipt := io.mapping.mappingGroup(1).rd
-    }
-
-    for (i <- 0 until 32) {
-      when(
-        io.broadcast.entries(0).receipt === table(i).receipt &&
-          i.U =/= io.mapping.regGroup(0).rd &&
-          i.U =/= io.mapping.regGroup(1).rd &&
-          table(i).busy &&
-          io.broadcast.entries(0).valid
-      ) {
-        table(i).busy := false.B
-        table(i).receipt := io.broadcast.entries(0).data
-      }.elsewhen(
-        io.broadcast.entries(1).receipt === table(i).receipt &&
-          i.U =/= io.mapping.regGroup(0).rd &&
-          i.U =/= io.mapping.regGroup(1).rd &&
-          table(i).busy &&
-          io.broadcast.entries(1).valid
-      ) {
-        table(i).busy := false.B
-        table(i).receipt := io.broadcast.entries(1).data
-      }
-    }
+    table(io.mapping.regGroup(0).rd).busy := true.B
+    table(io.mapping.regGroup(0).rd).receipt := io.mapping.mappingGroup(0).rd
+    table(io.mapping.regGroup(1).rd).busy := true.B
+    table(io.mapping.regGroup(1).rd).receipt := io.mapping.mappingGroup(1).rd
   }
 
   /*---------------------------------Table logic end-------------------------------*/

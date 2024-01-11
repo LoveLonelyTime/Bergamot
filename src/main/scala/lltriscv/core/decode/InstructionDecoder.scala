@@ -9,14 +9,20 @@ import lltriscv.core.execute._
 import lltriscv.core.broadcast._
 
 /*
- * The instruction decoding stage is divided into three cycles:
- * DecodeStage -> RegisterMappingStage -> IssueStage
+ * Decode stage
  *
- * DecodeStage: Split according to instruction format
- * RegisterMappingStage: Get and allocate renaming registers and ROB
- * IssueStage: Instruction queue arbitration
+ * Copyright (C) 2024-2025 LoveLonelyTime
  */
-class InstructionDecoder extends Module {
+
+/** Instruction decoder
+  *
+  * The instruction decoding stage is divided into three cycles: DecodeStage ->
+  * RegisterMappingStage -> IssueStage
+  *
+  * @param executeQueueWidth
+  *   Execute queue width
+  */
+class InstructionDecoder(executeQueueWidth: Int) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(DecoupledIO(Vec(2, new DecodeStageEntry())))
 
@@ -25,27 +31,30 @@ class InstructionDecoder extends Module {
     val broadcast = Flipped(new DataBroadcastIO())
 
     /* Execute queue interface */
-    val memoryEnq = DecoupledIO(new ExecuteEntry())
-    val aluEnq = DecoupledIO(new ExecuteEntry())
-    val branchEnq = DecoupledIO(new ExecuteEntry())
+    val enqs = Vec(executeQueueWidth, new ExecuteQueueEnqueueIO())
+
+    val tableWrite = new ROBTableWriteIO()
   })
   private val decodeStage = Module(new DecodeStage())
   private val registerMappingStage = Module(new RegisterMappingStage())
-  private val issueStage = Module(new IssueStage())
+  private val issueStage = Module(new IssueStage(executeQueueWidth))
 
   decodeStage.io.in <> io.in
   decodeStage.io.out <> registerMappingStage.io.in
+
   registerMappingStage.io.out <> issueStage.io.in
-
   registerMappingStage.io.mapping <> io.mapping
+  registerMappingStage.io.tableWrite <> io.tableWrite
 
-  issueStage.io.memoryEnq <> io.memoryEnq
-  issueStage.io.aluEnq <> io.aluEnq
-  issueStage.io.branchEnq <> io.branchEnq
-
+  issueStage.io.enqs <> io.enqs
   issueStage.io.broadcast <> io.broadcast
+
 }
 
+/** Decode stage
+  *
+  * Split according to instruction format
+  */
 class DecodeStage extends Module {
   val io = IO(new Bundle {
     val in = Flipped(DecoupledIO(Vec(2, new DecodeStageEntry())))
@@ -53,11 +62,15 @@ class DecodeStage extends Module {
   })
 
   private val inReg = Reg(Vec(2, new DecodeStageEntry()))
+
   // Pipeline logic
+  io.in.ready := io.out.ready
+  when(io.out.valid && io.out.ready) {
+    inReg.foreach(_.valid := false.B)
+  }
   when(io.in.valid && io.in.ready) {
     inReg := io.in.bits
   }
-  io.in.ready := io.out.ready
 
   // Decode logic
   for (i <- 0 until 2) {
@@ -192,48 +205,64 @@ class DecodeStage extends Module {
     }
 
     // TODO: Execute queue arbitrate
-    when(!inReg(i).vaild) {
-      io.out.bits(i).executeQueue := ExecuteQueueType.none
+    when(inReg(0).valid) {
+      io.out.bits(0).executeQueue := ExecuteQueueType.alu
     }.otherwise {
-      io.out.bits(i).executeQueue := ExecuteQueueType.alu
+      io.out.bits(0).executeQueue := ExecuteQueueType.none
+    }
+    when(inReg(1).valid) {
+      io.out.bits(1).executeQueue := ExecuteQueueType.alu2
+    }.otherwise {
+      io.out.bits(1).executeQueue := ExecuteQueueType.none
     }
 
-    io.out.bits(i).vaild := inReg(i).vaild
+    io.out.bits(i).valid := inReg(i).valid
     io.out.bits(i).pc := inReg(i).pc
   }
 
-  io.out.valid := io.in.valid
+  io.out.valid := true.B
 }
 
+/** Register mapping stage
+  *
+  * Getand allocate renaming registers and ROB
+  */
 class RegisterMappingStage extends Module {
   val io = IO(new Bundle {
     val in = Flipped(DecoupledIO(Vec(2, new RegisterMappingStageEntry())))
     val out = DecoupledIO(Vec(2, new IssueStageEntry()))
     // Mapping interface
     val mapping = new RegisterMappingIO()
+
+    // ROBTable interface
+    val tableWrite = new ROBTableWriteIO()
   })
 
   private val inReg = Reg(Vec(2, new RegisterMappingStageEntry()))
+
   // Pipeline logic
+  io.in.ready := io.mapping.ready && io.out.ready
+  when(io.out.valid && io.out.ready) {
+    inReg.foreach(_.valid := false.B)
+  }
   when(io.in.valid && io.in.ready) {
     inReg := io.in.bits
   }
-  io.in.ready := io.mapping.ready && io.out.ready
 
   // Mapping logic
-  io.mapping.valid := io.out.ready && io.in.valid
+  io.mapping.valid := io.out.ready
   for (i <- 0 until 2) {
     io.mapping.regGroup(i).rs1 := Mux(
-      inReg(i).vaild,
+      inReg(i).valid,
       inReg(i).rs1,
       0.U
     )
     io.mapping.regGroup(i).rs2 := Mux(
-      inReg(i).vaild,
+      inReg(i).valid,
       inReg(i).rs2,
       0.U
     )
-    io.mapping.regGroup(i).rd := Mux(inReg(i).vaild, inReg(i).rd, 0.U)
+    io.mapping.regGroup(i).rd := Mux(inReg(i).valid, inReg(i).rd, 0.U)
   }
 
   for (i <- 0 until 2) {
@@ -251,27 +280,33 @@ class RegisterMappingStage extends Module {
     io.out.bits(i).imm := inReg(i).imm
 
     io.out.bits(i).pc := inReg(i).pc
-    io.out.bits(i).vaild := inReg(i).vaild
+    io.out.bits(i).valid := inReg(i).valid
+
+    io.tableWrite.entries(i).id := io.mapping.mappingGroup(i).rd
+    io.tableWrite.entries(i).pc := inReg(i).pc
+    io.tableWrite.entries(i).valid := inReg(i).valid
   }
 
-  io.out.valid := io.in.valid && io.mapping.valid
+  io.tableWrite.wen := io.mapping.valid && io.mapping.ready
+
+  io.out.valid := io.mapping.ready
 }
 
-/** Issue stage:
+/** Issue stage
+  *
+  * Instruction queue arbitration
   *
   * Select executable instructions to the instruction queue.When the execution
   * queue types of two instructions are different, two instructions can be
   * issued at once.If two instructions are the same type, will be issued in two
   * cycles.
   */
-class IssueStage extends Module {
+class IssueStage(executeQueueWidth: Int) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(DecoupledIO(Vec(2, new IssueStageEntry())))
     val broadcast = Flipped(new DataBroadcastIO())
     /* Execute queue interface */
-    val memoryEnq = DecoupledIO(new ExecuteEntry())
-    val aluEnq = DecoupledIO(new ExecuteEntry())
-    val branchEnq = DecoupledIO(new ExecuteEntry())
+    val enqs = Vec(executeQueueWidth, new ExecuteQueueEnqueueIO())
   })
 
   private val inReg = Reg(Vec(2, new IssueStageEntry()))
@@ -300,184 +335,64 @@ class IssueStage extends Module {
     }
   }
 
+  // Check queue grants
+  private val grants = VecInit(
+    VecInit.fill(executeQueueWidth)(false.B),
+    VecInit.fill(executeQueueWidth)(false.B)
+  )
+  private val queueReady = VecInit(true.B, true.B)
+
+  io.enqs.foreach(_.enq.valid := false.B)
+
+  for (i <- 0 until executeQueueWidth) {
+    grants(0)(i) := inReg(0).executeQueue === io.enqs(i).queueType &&
+      inReg(0).valid
+    when(grants(0)(i)) {
+      queueReady(0) := io.enqs(i).enq.ready
+      io.enqs(i).enq.valid := true.B
+    }
+  }
+
+  for (i <- 0 until executeQueueWidth) {
+    grants(1)(i) := inReg(1).executeQueue === io.enqs(i).queueType &&
+      inReg(1).valid &&
+      !grants(0)(i) // priority
+
+    when(grants(1)(i)) {
+      queueReady(1) := io.enqs(i).enq.ready
+      io.enqs(i).enq.valid := true.B
+    }.elsewhen(
+      inReg(1).executeQueue === io.enqs(i).queueType &&
+        inReg(1).valid &&
+        grants(0)(i)
+    ) {
+      queueReady(1) := false.B
+    }
+  }
+
+  // TODO: connect
+  for (i <- 0 until executeQueueWidth) {
+    io.enqs(i).enq.bits := 0.U.asTypeOf(new ExecuteEntry())
+  }
+
+  for (
+    i <- 0 until 2;
+    j <- 0 until executeQueueWidth
+  ) {
+    when(grants(i)(j)) {
+      io.enqs(j).enq.bits <> inReg(i)
+    }
+  }
+
+  for (i <- 0 until 2) {
+    when(queueReady(i)) {
+      inReg(i).valid := false.B
+    }
+  }
+
   // Pipeline logic
+  io.in.ready := queueReady(0) && queueReady(1)
   when(io.in.valid && io.in.ready) {
     inReg := io.in.bits
-  }
-
-  /** IssueStatus
-    *
-    * both: Both require issuing
-    *
-    * first: Only the first one requires issuing
-    *
-    * second: Only the second one requires issuing
-    */
-  private object IssueStatus extends ChiselEnum {
-    val both, first, second = Value
-  }
-
-  private val issueStageReg = RegInit(IssueStatus.both)
-
-  // Check queue status
-  private val requireQueue =
-    VecInit(inReg(0).executeQueue, inReg(1).executeQueue)
-
-  private val queueReady = VecInit(false.B, false.B)
-  private val queueValid = VecInit(false.B, false.B)
-  for (i <- 0 until 2) {
-    switch(requireQueue(i)) {
-      is(ExecuteQueueType.memory) {
-        queueReady(i) := io.memoryEnq.ready
-        queueValid(i) := io.memoryEnq.valid
-      }
-      is(ExecuteQueueType.alu) {
-        queueReady(i) := io.aluEnq.ready
-        queueValid(i) := io.aluEnq.valid
-      }
-      is(ExecuteQueueType.branch) {
-        queueReady(i) := io.branchEnq.ready
-        queueValid(i) := io.branchEnq.valid
-      }
-      is(ExecuteQueueType.none) {
-        queueReady(i) := true.B
-        queueValid(i) := true.B
-      }
-    }
-  }
-
-  // connect logic
-  // TODO : connect
-  private def connectQueue(id: Int) = {
-    switch(requireQueue(id)) {
-      is(ExecuteQueueType.memory) {
-        io.memoryEnq.bits <> inReg(id)
-      }
-      is(ExecuteQueueType.alu) {
-        io.aluEnq.bits <> inReg(id)
-      }
-      is(ExecuteQueueType.branch) {
-        io.branchEnq.bits <> inReg(id)
-      }
-    }
-  }
-
-  io.memoryEnq.bits := 0.U.asTypeOf(new ExecuteEntry())
-  io.aluEnq.bits := 0.U.asTypeOf(new ExecuteEntry())
-  io.branchEnq.bits := 0.U.asTypeOf(new ExecuteEntry())
-  connectQueue(1)
-  connectQueue(0)
-
-  // ready logic
-  io.in.ready := true.B
-  switch(issueStageReg) {
-    is(IssueStatus.both) {
-      when(
-        requireQueue(0) === ExecuteQueueType.none &&
-          requireQueue(1) === ExecuteQueueType.none
-      ) {
-        io.in.ready := true.B
-      }.elsewhen(
-        requireQueue(0) =/= requireQueue(1) &&
-          queueReady(0) &&
-          queueReady(1)
-      ) { // Parallel
-        io.in.ready := true.B
-      }.otherwise { // Serial
-        io.in.ready := false.B
-      }
-    }
-
-    is(IssueStatus.first) {
-      io.in.ready := queueReady(0)
-    }
-
-    is(IssueStatus.second) {
-      io.in.ready := queueReady(1)
-    }
-  }
-
-  // Valid queue logic
-  def validQueue(id: Int) = {
-    switch(requireQueue(id)) {
-      is(ExecuteQueueType.memory) {
-        io.memoryEnq.valid := true.B
-      }
-      is(ExecuteQueueType.alu) {
-        io.aluEnq.valid := true.B
-      }
-      is(ExecuteQueueType.branch) {
-        io.branchEnq.valid := true.B
-      }
-    }
-  }
-
-  io.memoryEnq.valid := false.B
-  io.aluEnq.valid := false.B
-  io.branchEnq.valid := false.B
-  switch(issueStageReg) {
-    is(IssueStatus.both) {
-      when(
-        requireQueue(0) === ExecuteQueueType.none &&
-          requireQueue(1) === ExecuteQueueType.none
-      ) {
-        // Do nothing
-      }.elsewhen(
-        requireQueue(0) =/= requireQueue(1) &&
-          queueReady(0) &&
-          queueReady(1)
-      ) { // Parallel
-        when(io.in.valid) {
-          validQueue(0)
-          validQueue(1)
-        }
-      }.otherwise { // Serial
-        validQueue(0)
-      }
-    }
-
-    is(IssueStatus.first) {
-      when(io.in.valid) {
-        validQueue(0)
-      }
-    }
-
-    is(IssueStatus.second) {
-      when(io.in.valid) {
-        validQueue(1)
-      }
-    }
-  }
-
-  // Status logic
-  switch(issueStageReg) {
-    is(IssueStatus.both) {
-      when(
-        requireQueue(0) === ExecuteQueueType.none &&
-          requireQueue(1) === ExecuteQueueType.none
-      ) {
-        issueStageReg := IssueStatus.both
-      }.elsewhen(
-        requireQueue(0) =/= requireQueue(1) &&
-          queueReady(0) && queueValid(0) &&
-          queueReady(1) && queueValid(1)
-      ) {
-        issueStageReg := IssueStatus.both
-      }.elsewhen(queueReady(0) && queueValid(0)) {
-        issueStageReg := IssueStatus.second
-      }.elsewhen(queueReady(1) && queueValid(1)) {
-        issueStageReg := IssueStatus.first
-      }
-    }
-    is(IssueStatus.first) {
-      when(queueReady(0) && queueValid(0)) {
-        issueStageReg := IssueStatus.both
-      }
-    }
-    is(IssueStatus.second) {
-      when(queueReady(1) && queueValid(1)) {
-        issueStageReg := IssueStatus.both
-      }
-    }
   }
 }

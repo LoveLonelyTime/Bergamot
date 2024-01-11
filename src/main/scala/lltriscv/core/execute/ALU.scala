@@ -2,55 +2,64 @@ package lltriscv.core.execute
 
 import chisel3._
 import chisel3.util._
+
 import lltriscv.core._
 import lltriscv.core.record._
 
-object ALUOperationType extends ChiselEnum {
-  val none, add, sub, and, or, xor, sll, srl, sra, slt, sltu = Value
-}
+/*
+ * ALU (Arithmetic and Logic Unit), which is suitable for integer operations (RV32I)
+ *
+ * Copyright (C) 2024-2025 LoveLonelyTime
+ */
 
+/** ALU execute queue
+  *
+  * ALUDecodeStage -> ALUExecuteStage
+  */
 class ALU extends Module {
   val io = IO(new Bundle {
+    // Pipeline interface
     val in = Flipped(DecoupledIO(new ExecuteEntry()))
+    val out = DecoupledIO(new ExecuteResultEntry())
   })
+  private val aluDecodeStage = Module(new ALUDecodeStage())
+  private val aluExecuteStage = Module(new ALUExecuteStage())
 
+  io.in <> aluDecodeStage.io.in
+  aluDecodeStage.io.out <> aluExecuteStage.io.in
+  aluExecuteStage.io.out <> io.out
 }
 
-class ALUDecodeStageEntry extends Bundle {
-  val op = ALUOperationType()
-  val op1 = DataType.operationType.cloneType
-  val op2 = DataType.operationType.cloneType
-  val rd = DataType.receiptType.cloneType
-  // Corresponding PC
-  val pc = DataType.pcType.cloneType
-  // Validity
-  val vaild = Bool()
-}
-
-class ExecuteResultEntry extends Bundle {
-  val result = DataType.operationType.cloneType
-  val rd = DataType.receiptType.cloneType
-  // Corresponding PC
-  val pc = DataType.pcType.cloneType
-  // Validity
-  val vaild = Bool()
-}
-
+/** ALU decode stage
+  *
+  * Secondary decoding of instructions: extract information (op1, op2, op),
+  * extend immediate
+  *
+  * Single cycle stage
+  */
 class ALUDecodeStage extends Module {
   val io = IO(new Bundle {
+    // Pipeline interface
     val in = Flipped(DecoupledIO(new ExecuteEntry()))
-    val out = DecoupledIO(new ALUDecodeStageEntry())
+    val out = DecoupledIO(new ALUExecuteStageEntry())
   })
+  // Pipeline logic
   private val inReg = Reg(new ExecuteEntry())
 
-  when(io.in.ready && io.in.valid) {
+  when(io.out.ready && io.out.valid) { // Stall
+    inReg.valid := false.B
+  }
+  when(io.in.ready && io.in.valid) { // Sample
     inReg := io.in.bits
   }
 
   io.in.ready := io.out.ready
 
+  // TODO: optimize
   // Decode logic
-  io.out.bits.op := ALUOperationType.none
+
+  // op
+  io.out.bits.op := ALUOperationType.undefined
   switch(inReg.func3) {
     is("b100".U) {
       io.out.bits.op := ALUOperationType.xor
@@ -74,12 +83,12 @@ class ALUDecodeStage extends Module {
     is("b000".U) {
       when(inReg.opcode === "b0110011".U) { // R
         when(inReg.func7(5) === 0.U) {
-          io.out.bits.op := ALUOperationType.and
+          io.out.bits.op := ALUOperationType.add
         }.otherwise {
           io.out.bits.op := ALUOperationType.sub
         }
       }.elsewhen(inReg.opcode === "b0010011".U) { // I
-        io.out.bits.op := ALUOperationType.and
+        io.out.bits.op := ALUOperationType.add
       }
     }
 
@@ -92,39 +101,53 @@ class ALUDecodeStage extends Module {
     }
   }
 
+  // op1 & op2
+  io.out.bits.op1 := 0.U
+  io.out.bits.op2 := 0.U
   when(inReg.opcode === "b0110011".U) { // R
     io.out.bits.op1 := inReg.rs1.receipt
     io.out.bits.op2 := inReg.rs2.receipt
   }.elsewhen(inReg.opcode === "b0010011".U) { // I
     io.out.bits.op1 := inReg.rs1.receipt
     // Extend
-    io.out.bits.op2 := Fill(20, inReg.imm(11)) ## inReg.imm(11, 0)
-  }.otherwise {
-    io.out.bits.op1 := 0.U
-    io.out.bits.op2 := 0.U
+    io.out.bits.op2 := Fill(20, inReg.imm(11)) ##
+      inReg.imm(11, 0) // inReg.imm(11) is the sign bit
   }
 
+  // rd & pc & valid
   io.out.bits.rd := inReg.rd
   io.out.bits.pc := inReg.pc
-  io.out.bits.vaild := inReg.vaild
+  io.out.bits.valid := inReg.valid
 
-  io.out.valid := io.in.valid
+  io.out.valid := true.B // No wait
 }
 
+/** ALU execute stage
+  *
+  * Execute ALU operation
+  *
+  * Single cycle stage
+  */
 class ALUExecuteStage extends Module {
   val io = IO(new Bundle {
-    val in = Flipped(DecoupledIO(new ALUDecodeStageEntry()))
+    // Pipeline interface
+    val in = Flipped(DecoupledIO(new ALUExecuteStageEntry()))
     val out = DecoupledIO(new ExecuteResultEntry())
   })
-
-  private val inReg = Reg(new ALUDecodeStageEntry())
+  // Pipeline logic
+  private val inReg = Reg(new ALUExecuteStageEntry())
 
   io.in.ready := io.out.ready
 
-  when(io.in.ready && io.in.valid) {
+  when(io.out.ready && io.out.valid) { // Stall
+    inReg.valid := false.B
+  }
+  when(io.in.ready && io.in.valid) { // Sample
     inReg := io.in.bits
   }
 
+  // TODO: complete
+  // Execute
   io.out.bits.result := 0.U
   switch(inReg.op) {
     is(ALUOperationType.add) {
@@ -144,9 +167,10 @@ class ALUExecuteStage extends Module {
     }
   }
 
+  // rd & pc & valid
   io.out.bits.rd := inReg.rd
   io.out.bits.pc := inReg.pc
-  io.out.bits.vaild := inReg.vaild
+  io.out.bits.valid := inReg.valid
 
-  io.out.valid := io.in.valid
+  io.out.valid := true.B // No wait
 }

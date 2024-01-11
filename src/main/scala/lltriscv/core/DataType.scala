@@ -18,10 +18,6 @@ object DataType {
   val operationType = UInt(32.W)
 }
 
-object InstructionType extends ChiselEnum {
-  val R, I, S, B, U, J, UK = Value
-}
-
 object ExecuteQueueType extends ChiselEnum {
-  val none, memory, alu, branch = Value
+  val none, memory, alu, alu2, branch = Value
 }
