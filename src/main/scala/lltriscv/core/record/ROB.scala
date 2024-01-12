@@ -3,51 +3,38 @@ package lltriscv.core.record
 import chisel3._
 import chisel3.util._
 import lltriscv.core._
+import lltriscv.utils.CoreUtils
 
-class ROBTableEntry extends Bundle {
-  val result = DataType.operationType.cloneType
-  val pc = DataType.pcType.cloneType
-  val commit = Bool()
-  val valid = Bool()
-}
+/*
+ * ROB (ReOrder Buffer)
+ *
+ * The remapped instruction will enter ROB.
+ * In ROB, save the status of instructions in the execution core and pipeline.
+ * After the instruction is committed, it will retire from the ROB or trigger an event.
+ *
+ * Copyright (C) 2024-2025 LoveLonelyTime
+ */
 
-class ROBTableWriteIO extends Bundle {
-  val entries = Output(
-    Vec(
-      2,
-      new Bundle {
-        val id = DataType.receiptType.cloneType
-        val pc = DataType.pcType.cloneType
-        val valid = Bool()
-      }
-    )
-  )
-  val wen = Output(Bool())
-}
-
-class ROBTableCommitIO extends Bundle {
-  val entries = Output(
-    Vec(
-      2,
-      new Bundle {
-        val id = DataType.receiptType.cloneType
-        val result = DataType.operationType.cloneType
-        val valid = Bool()
-      }
-    )
-  )
-  val wen = Output(Bool())
-}
-
-class ROBTableRetireIO(depth: Int) extends Bundle {
-  val entries = Output(Vec(depth * 2, new ROBTableEntry()))
-}
-
+/** ROB (ReOrder Buffer) component
+  *
+  * Implementation using read/write pointer queue
+  *
+  * @param depth
+  *   The number of ROB table items, each table entry stores 2 instructions.
+  */
 class ROB(depth: Int) extends Module {
   val io = IO(new Bundle {
+    // Retire interface
     val retired = DecoupledIO(DataType.receiptType)
+
+    /*
+     * Alloc interface
+     * Return the primary receipt of the table item.
+     * The receipts of two table entries are (primary receipt << 1 | 1, primary receipt << 1 | 0)
+     */
     val alloc = DecoupledIO(DataType.receiptType)
 
+    // ROB table interfaces
     val tableWrite = Flipped(new ROBTableWriteIO())
     val tableCommit = Flipped(new ROBTableCommitIO())
     val tableRetire = new ROBTableRetireIO(depth)
@@ -55,6 +42,7 @@ class ROB(depth: Int) extends Module {
   // Table logic
   private val table = Reg(Vec(depth * 2, new ROBTableEntry()))
 
+  // Table write logic
   when(io.tableWrite.wen) {
     for (i <- 0 until 2) {
       table(io.tableWrite.entries(i).id).pc := io.tableWrite.entries(i).pc
@@ -63,6 +51,7 @@ class ROB(depth: Int) extends Module {
     }
   }
 
+  // Table commit logic
   when(io.tableCommit.wen) {
     for (i <- 0 until 2) {
       when(io.tableCommit.entries(i).valid) {
@@ -74,21 +63,14 @@ class ROB(depth: Int) extends Module {
     }
   }
 
+  // Table retire logic
   io.tableRetire.entries := table
 
-  def counter(depth: Int, incr: Bool): (UInt, UInt) = {
-    val cntReg = RegInit(0.U(log2Ceil(depth).W))
-    val nextVal = Mux(cntReg === (depth - 1).U, 0.U, cntReg + 1.U)
-    when(incr) {
-      cntReg := nextVal
-    }
-    (cntReg, nextVal)
-  }
-
+  // Queue logic
   val incrRead = WireInit(false.B)
   val incrWrite = WireInit(false.B)
-  val (readPtr, nextRead) = counter(depth, incrRead)
-  val (writePtr, nextWrite) = counter(depth, incrWrite)
+  val (readPtr, nextRead) = CoreUtils.pointer(depth, incrRead)
+  val (writePtr, nextWrite) = CoreUtils.pointer(depth, incrWrite)
 
   val emptyReg = RegInit(true.B)
   val fullReg = RegInit(false.B)

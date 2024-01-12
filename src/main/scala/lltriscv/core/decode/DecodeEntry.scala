@@ -4,7 +4,8 @@ import chisel3._
 import chisel3.util._
 
 import lltriscv.core._
-import lltriscv.core.broadcast._
+import lltriscv.core.broadcast.DataBroadcastSlotEntry
+import lltriscv.core.execute._
 
 /*
  * Decode entry

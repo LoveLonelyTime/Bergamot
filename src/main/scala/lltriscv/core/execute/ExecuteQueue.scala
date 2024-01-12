@@ -3,7 +3,6 @@ package lltriscv.core.execute
 import chisel3._
 import chisel3.util._
 import lltriscv.core.broadcast.DataBroadcastIO
-import lltriscv.core.ExecuteQueueType
 import lltriscv.utils.CoreUtils
 
 /*

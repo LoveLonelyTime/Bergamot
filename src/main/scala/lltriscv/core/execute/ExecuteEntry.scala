@@ -59,3 +59,15 @@ class ExecuteResultEntry extends Bundle {
   val pc = DataType.pcType.cloneType // Corresponding PC
   val valid = Bool() // Validity
 }
+
+/** Execute queue type
+  */
+object ExecuteQueueType extends ChiselEnum {
+  /*
+   * none: Discarded instructions
+   * memory: Memory access instructions
+   * alu: ALU instructions
+   * branch: Branch instructions
+   */
+  val none, memory, alu, alu2, branch = Value
+}

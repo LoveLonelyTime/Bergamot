@@ -349,3 +349,6 @@ hs_err_pid*
 # VSCode
 .vscode/
 
+# Generated
+generated/
+

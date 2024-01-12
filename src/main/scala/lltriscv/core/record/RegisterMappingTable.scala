@@ -5,48 +5,35 @@ import chisel3.util._
 
 import lltriscv.core._
 import lltriscv.core.broadcast.{DataBroadcastSlotEntry, DataBroadcastIO}
+import lltriscv.utils.CoreUtils
 
-class RegisterMappingIO extends Bundle {
-  val regGroup = Output(
-    Vec(
-      2,
-      new Bundle {
-        val rs1 = DataType.registerType.cloneType
-        val rs2 = DataType.registerType.cloneType
-        val rd = DataType.registerType.cloneType
-      }
-    )
-  )
-  val mappingGroup = Input(
-    Vec(
-      2,
-      new Bundle {
-        val rs1 = new DataBroadcastSlotEntry()
-        val rs2 = new DataBroadcastSlotEntry()
-        val rd = DataType.receiptType.cloneType
-      }
-    )
-  )
-  val valid = Output(Bool())
-  val ready = Input(Bool())
-}
+/*
+ * Register mapping table
+ *
+ * Register mapping table is responsible for executing register renaming logic and requesting space from ROB
+ *
+ * Copyright (C) 2024-2025 LoveLonelyTime
+ */
 
-class RegisterMappingTableEntry extends Bundle {
-  val busy = Bool()
-  val receipt = DataType.receiptType.cloneType
-}
-
+/** Register mapping table
+  *
+  * Perform 2-ways register renaming
+  */
 class RegisterMappingTable extends Module {
   val io = IO(new Bundle {
+    // Mapping interface
     val mapping = Flipped(new RegisterMappingIO())
+    // ROB alloc interface
     val alloc = Flipped(DecoupledIO(DataType.receiptType))
+    // Broadcast interface
     val broadcast = Flipped(new DataBroadcastIO())
   })
 
+  // TODO:  Building register types
   private val table = Reg(Vec(32, new RegisterMappingTableEntry()))
 
-  io.mapping.ready := io.alloc.valid
-  io.alloc.ready := io.mapping.valid
+  io.mapping.ready := io.alloc.valid // Alloc valid
+  io.alloc.ready := io.mapping.valid // Mapping valid
 
   /*---------------------------------Mapping logic start-------------------------------*/
 
@@ -54,66 +41,26 @@ class RegisterMappingTable extends Module {
   when(io.mapping.regGroup(0).rs1 === 0.U) { // x0 bypass
     io.mapping.mappingGroup(0).rs1.pending := false.B
     io.mapping.mappingGroup(0).rs1.receipt := 0.U
-  }.elsewhen(table(io.mapping.regGroup(0).rs1).busy) { // busy
-    when(
-      table(io.mapping.regGroup(0).rs1).receipt ===
-        io.broadcast.entries(0).receipt &&
-        io.broadcast.entries(0).valid
-    ) { // broadcast0 bypass
-      io.mapping.mappingGroup(0).rs1.pending := false.B
-      io.mapping.mappingGroup(0).rs1.receipt := io.broadcast.entries(0).data
-    }.elsewhen(
-      table(io.mapping.regGroup(0).rs1).receipt ===
-        io.broadcast.entries(1).receipt &&
-        io.broadcast.entries(1).valid
-    ) { // broadcast1 bypass
-      io.mapping.mappingGroup(0).rs1.pending := false.B
-      io.mapping.mappingGroup(0).rs1.receipt := io.broadcast.entries(1).data
-    }.otherwise { // pending
-      io.mapping.mappingGroup(0).rs1.pending := true.B
-      io.mapping
-        .mappingGroup(0)
-        .rs1
-        .receipt := table(io.mapping.regGroup(0).rs1).receipt
-    }
-  }.otherwise { // valid
-    io.mapping.mappingGroup(0).rs1.pending := false.B
-    io.mapping.mappingGroup(0).rs1.receipt := table(
-      io.mapping.regGroup(0).rs1
-    ).receipt
+  }.otherwise {
+    // Broadcast bypass
+    for (i <- 0 until 2)
+      io.mapping.mappingGroup(0).rs1 := CoreUtils.bypassBroadcast(
+        table(io.mapping.regGroup(0).rs1).content,
+        io.broadcast.entries(i)
+      )
   }
 
   // 0: rs2
   when(io.mapping.regGroup(0).rs2 === 0.U) { // x0 bypass
     io.mapping.mappingGroup(0).rs2.pending := false.B
     io.mapping.mappingGroup(0).rs2.receipt := 0.U
-  }.elsewhen(table(io.mapping.regGroup(0).rs2).busy) { // busy
-    when(
-      table(io.mapping.regGroup(0).rs2).receipt ===
-        io.broadcast.entries(0).receipt &&
-        io.broadcast.entries(0).valid
-    ) { // broadcast0 bypass
-      io.mapping.mappingGroup(0).rs2.pending := false.B
-      io.mapping.mappingGroup(0).rs2.receipt := io.broadcast.entries(0).data
-    }.elsewhen(
-      table(io.mapping.regGroup(0).rs2).receipt ===
-        io.broadcast.entries(1).receipt &&
-        io.broadcast.entries(1).valid
-    ) { // broadcast1 bypass
-      io.mapping.mappingGroup(0).rs2.pending := false.B
-      io.mapping.mappingGroup(0).rs2.receipt := io.broadcast.entries(1).data
-    }.otherwise { // pending
-      io.mapping.mappingGroup(0).rs2.pending := true.B
-      io.mapping
-        .mappingGroup(0)
-        .rs2
-        .receipt := table(io.mapping.regGroup(0).rs2).receipt
-    }
-  }.otherwise { // valid
-    io.mapping.mappingGroup(0).rs2.pending := false.B
-    io.mapping.mappingGroup(0).rs2.receipt := table(
-      io.mapping.regGroup(0).rs2
-    ).receipt
+  }.otherwise {
+    // Broadcast bypass
+    for (i <- 0 until 2)
+      io.mapping.mappingGroup(0).rs2 := CoreUtils.bypassBroadcast(
+        table(io.mapping.regGroup(0).rs2).content,
+        io.broadcast.entries(i)
+      )
   }
 
   // 0: rd
@@ -126,33 +73,13 @@ class RegisterMappingTable extends Module {
   }.elsewhen(io.mapping.regGroup(1).rs1 === io.mapping.regGroup(0).rd) { // rd bypass
     io.mapping.mappingGroup(1).rs1.pending := true.B
     io.mapping.mappingGroup(1).rs1.receipt := io.mapping.mappingGroup(0).rd
-  }.elsewhen(table(io.mapping.regGroup(1).rs1).busy) { // busy
-    when(
-      table(io.mapping.regGroup(1).rs1).receipt ===
-        io.broadcast.entries(0).receipt &&
-        io.broadcast.entries(0).valid
-    ) { // broadcast0 bypass
-      io.mapping.mappingGroup(1).rs1.pending := false.B
-      io.mapping.mappingGroup(1).rs1.receipt := io.broadcast.entries(0).data
-    }.elsewhen(
-      table(io.mapping.regGroup(1).rs1).receipt ===
-        io.broadcast.entries(1).receipt &&
-        io.broadcast.entries(1).valid
-    ) { // broadcast1 bypass
-      io.mapping.mappingGroup(1).rs1.pending := false.B
-      io.mapping.mappingGroup(1).rs1.receipt := io.broadcast.entries(1).data
-    }.otherwise { // pending
-      io.mapping.mappingGroup(1).rs1.pending := true.B
-      io.mapping
-        .mappingGroup(1)
-        .rs1
-        .receipt := table(io.mapping.regGroup(1).rs1).receipt
-    }
-  }.otherwise { // valid
-    io.mapping.mappingGroup(1).rs1.pending := false.B
-    io.mapping.mappingGroup(1).rs1.receipt := table(
-      io.mapping.regGroup(1).rs1
-    ).receipt
+  }.otherwise {
+    // Broadcast bypass
+    for (i <- 0 until 2)
+      io.mapping.mappingGroup(1).rs1 := CoreUtils.bypassBroadcast(
+        table(io.mapping.regGroup(1).rs1).content,
+        io.broadcast.entries(i)
+      )
   }
 
   // 1: rs2
@@ -162,33 +89,13 @@ class RegisterMappingTable extends Module {
   }.elsewhen(io.mapping.regGroup(1).rs2 === io.mapping.regGroup(0).rd) { // rd bypass
     io.mapping.mappingGroup(1).rs2.pending := true.B
     io.mapping.mappingGroup(1).rs2.receipt := io.mapping.mappingGroup(0).rd
-  }.elsewhen(table(io.mapping.regGroup(1).rs2).busy) { // busy
-    when(
-      table(io.mapping.regGroup(1).rs2).receipt ===
-        io.broadcast.entries(0).receipt &&
-        io.broadcast.entries(0).valid
-    ) { // broadcast0 bypass
-      io.mapping.mappingGroup(1).rs2.pending := false.B
-      io.mapping.mappingGroup(1).rs2.receipt := io.broadcast.entries(0).data
-    }.elsewhen(
-      table(io.mapping.regGroup(1).rs2).receipt ===
-        io.broadcast.entries(1).receipt &&
-        io.broadcast.entries(1).valid
-    ) { // broadcast1 bypass
-      io.mapping.mappingGroup(1).rs2.pending := false.B
-      io.mapping.mappingGroup(1).rs2.receipt := io.broadcast.entries(1).data
-    }.otherwise { // pending
-      io.mapping.mappingGroup(1).rs2.pending := true.B
-      io.mapping
-        .mappingGroup(1)
-        .rs2
-        .receipt := table(io.mapping.regGroup(1).rs2).receipt
-    }
-  }.otherwise { // valid
-    io.mapping.mappingGroup(1).rs2.pending := false.B
-    io.mapping.mappingGroup(1).rs2.receipt := table(
-      io.mapping.regGroup(1).rs2
-    ).receipt
+  }.otherwise {
+    // Broadcast bypass
+    for (i <- 0 until 2)
+      io.mapping.mappingGroup(1).rs2 := CoreUtils.bypassBroadcast(
+        table(io.mapping.regGroup(1).rs2).content,
+        io.broadcast.entries(i)
+      )
   }
 
   // 1: rd
@@ -198,29 +105,19 @@ class RegisterMappingTable extends Module {
 
   /*---------------------------------Table logic start-------------------------------*/
   for (i <- 0 until 32) {
-    when(
-      io.broadcast.entries(0).receipt === table(i).receipt &&
-        table(i).busy &&
-        io.broadcast.entries(0).valid
-    ) {
-      table(i).busy := false.B
-      table(i).receipt := io.broadcast.entries(0).data
-    }
-    when(
-      io.broadcast.entries(1).receipt === table(i).receipt &&
-        table(i).busy &&
-        io.broadcast.entries(1).valid
-    ) {
-      table(i).busy := false.B
-      table(i).receipt := io.broadcast.entries(1).data
-    }
-  }
+    // Broadcast logic
+    for (j <- 0 until 2)
+      CoreUtils.matchBroadcast(table(i).content, io.broadcast.entries(j))
 
-  when(io.mapping.valid && io.mapping.ready) {
-    table(io.mapping.regGroup(0).rd).busy := true.B
-    table(io.mapping.regGroup(0).rd).receipt := io.mapping.mappingGroup(0).rd
-    table(io.mapping.regGroup(1).rd).busy := true.B
-    table(io.mapping.regGroup(1).rd).receipt := io.mapping.mappingGroup(1).rd
+    // Write table
+    when(io.mapping.valid && io.mapping.ready) {
+      for (j <- 0 until 2) {
+        table(io.mapping.regGroup(j).rd).content.pending := true.B
+        table(io.mapping.regGroup(j).rd).content.receipt := io.mapping
+          .mappingGroup(j)
+          .rd
+      }
+    }
   }
 
   /*---------------------------------Table logic end-------------------------------*/

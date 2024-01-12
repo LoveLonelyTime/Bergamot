@@ -54,4 +54,36 @@ object CoreUtils {
       slot.receipt := source.data
     }
   }
+
+  /** Bypass a broadcast slot
+    *
+    * When the match is successful, return bypass result
+    *
+    * Otherwise, return slot
+    *
+    * @param slot
+    *   Broadcast slot
+    * @param source
+    *   Broadcast source
+    * @return
+    *   Bypass result
+    */
+  def bypassBroadcast(
+      slot: DataBroadcastSlotEntry,
+      source: DataBroadcastEntry
+  ) = {
+    val result = Wire(new DataBroadcastSlotEntry())
+    when(
+      source.valid &&
+        slot.pending &&
+        slot.receipt === source.receipt
+    ) {
+      result.pending := false.B
+      result.receipt := source.data
+    }.otherwise {
+      result.pending := slot.pending
+      result.receipt := slot.receipt
+    }
+    result
+  }
 }

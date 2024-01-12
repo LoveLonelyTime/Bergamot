@@ -13,6 +13,7 @@ import lltriscv.core.execute._
 import lltriscv.core.broadcast.DataBroadcastIO
 import lltriscv.core.broadcast.PriorityBroadcaster
 import lltriscv.core.decode.InstructionDecoder
+import lltriscv.core.broadcast.RoundRobinBroadcaster
 
 class RetireMock extends Module {
   val io = IO(new Bundle {
@@ -44,53 +45,59 @@ class RetireMock extends Module {
   }
 }
 
+class CoreTest extends Module {
+  val io = IO(new Bundle {
+    val in = Flipped(DecoupledIO(Vec(2, new DecodeStageEntry())))
+  })
+  private val registerMappingTable = Module(new RegisterMappingTable())
+  private val rob = Module(new ROB(8))
+  private val instructionDecoder = Module(new InstructionDecoder(2))
+
+  private val aluExecuteQueue =
+    Module(new InOrderedExecuteQueue(8, ExecuteQueueType.alu))
+  private val alu = Module(new ALU())
+
+  private val aluExecuteQueue2 =
+    Module(new InOrderedExecuteQueue(8, ExecuteQueueType.alu2))
+  private val alu2 = Module(new ALU())
+
+  private val broadcast = Module(new RoundRobinBroadcaster(2))
+
+  private val retireMock = Module(new RetireMock())
+
+  aluExecuteQueue.io.broadcast <> broadcast.io.broadcast
+  aluExecuteQueue2.io.broadcast <> broadcast.io.broadcast
+
+  alu.io.in <> aluExecuteQueue.io.deq
+  alu2.io.in <> aluExecuteQueue2.io.deq
+
+  broadcast.io.queues(0) <> alu.io.out
+  broadcast.io.queues(1) <> alu2.io.out
+
+  instructionDecoder.io.tableWrite <> rob.io.tableWrite
+  broadcast.io.tableCommit <> rob.io.tableCommit
+
+  registerMappingTable.io.mapping <> instructionDecoder.io.mapping
+  registerMappingTable.io.alloc <> rob.io.alloc
+  registerMappingTable.io.broadcast <> broadcast.io.broadcast
+  rob.io.retired <> retireMock.io.retired
+
+  instructionDecoder.io.broadcast <> broadcast.io.broadcast
+
+  instructionDecoder.io.in <> io.in
+  instructionDecoder.io.enqs(0) <> aluExecuteQueue.io.enqAndType
+  instructionDecoder.io.enqs(1) <> aluExecuteQueue2.io.enqAndType
+
+  retireMock.io.tableRetire <> rob.io.tableRetire
+}
+
 class RegisterMappingTableTest extends AnyFreeSpec with ChiselScalatestTester {
+  "Print verilog" in {
+    emitVerilog(new CoreTest(), Array("--target-dir", "generated"))
+  }
+
   "RegisterMappingTable should be OK" in {
-    test(new Module {
-      val io = IO(new Bundle {
-        val in = Flipped(DecoupledIO(Vec(2, new DecodeStageEntry())))
-      })
-      private val registerMappingTable = Module(new RegisterMappingTable())
-      private val rob = Module(new ROB(8))
-      private val instructionDecoder = Module(new InstructionDecoder(2))
-
-      private val aluExecuteQueue =
-        Module(new InOrderedExecuteQueue(8, ExecuteQueueType.alu))
-      private val alu = Module(new ALU())
-
-      private val aluExecuteQueue2 =
-        Module(new InOrderedExecuteQueue(8, ExecuteQueueType.alu2))
-      private val alu2 = Module(new ALU())
-
-      private val broadcast = Module(new PriorityBroadcaster(2))
-
-      private val retireMock = Module(new RetireMock())
-
-      aluExecuteQueue.io.broadcast <> broadcast.io.broadcast
-      aluExecuteQueue2.io.broadcast <> broadcast.io.broadcast
-
-      alu.io.in <> aluExecuteQueue.io.deq
-      alu2.io.in <> aluExecuteQueue2.io.deq
-
-      broadcast.io.queues(0) <> alu.io.out
-      broadcast.io.queues(1) <> alu2.io.out
-
-      instructionDecoder.io.tableWrite <> rob.io.tableWrite
-      broadcast.io.tableCommit <> rob.io.tableCommit
-
-      registerMappingTable.io.mapping <> instructionDecoder.io.mapping
-      registerMappingTable.io.alloc <> rob.io.alloc
-      registerMappingTable.io.broadcast <> broadcast.io.broadcast
-      rob.io.retired <> retireMock.io.retired
-
-      instructionDecoder.io.broadcast <> broadcast.io.broadcast
-
-      instructionDecoder.io.in <> io.in
-      instructionDecoder.io.enqs(0) <> aluExecuteQueue.io.enqAndType
-      instructionDecoder.io.enqs(1) <> aluExecuteQueue2.io.enqAndType
-
-      retireMock.io.tableRetire <> rob.io.tableRetire
-    }).withAnnotations(Seq(WriteVcdAnnotation)) { dut =>
+    test(new CoreTest()).withAnnotations(Seq(WriteVcdAnnotation)) { dut =>
       // rs2 rs1 rd
 
       dut.io.in
