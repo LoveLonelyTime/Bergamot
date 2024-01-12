@@ -63,14 +63,17 @@ class RoundRobinBroadcaster(executeQueueWidth: Int)
       io.queues(queuePtr).ready := true.B
       when(io.queues(queuePtr).bits.valid) {
         io.broadcast.entries(entryPtr).valid := true.B
-        io.broadcast.entries(entryPtr).receipt := io.queues(pointer).bits.rd
-        io.broadcast.entries(entryPtr).data := io.queues(pointer).bits.result
+        io.broadcast.entries(entryPtr).receipt := io.queues(queuePtr).bits.rd
+        io.broadcast.entries(entryPtr).data := io.queues(queuePtr).bits.result
 
         io.tableCommit.entries(entryPtr).valid := true.B
-        io.tableCommit.entries(entryPtr).id := io.queues(pointer).bits.rd
+        io.tableCommit.entries(entryPtr).id := io.queues(queuePtr).bits.rd
         io.tableCommit
           .entries(entryPtr)
-          .result := io.queues(pointer).bits.result
+          .result := io.queues(queuePtr).bits.result
+        io.tableCommit
+          .entries(entryPtr)
+          .real := io.queues(queuePtr).bits.real
       }
     }
   }
@@ -85,6 +88,7 @@ class RoundRobinBroadcaster(executeQueueWidth: Int)
   io.tableCommit.entries.foreach(item => {
     item.id := 0.U
     item.result := 0.U
+    item.real := 0.U
     item.valid := false.B
   })
 

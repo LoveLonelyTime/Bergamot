@@ -13,6 +13,17 @@ import lltriscv.core.broadcast.DataBroadcastEntry
 
 object CoreUtils {
 
+  /** Sign extended
+    *
+    * @param x
+    *   UInt
+    * @param b
+    *   Sign bit
+    * @return
+    *   width = x.getWidth
+    */
+  def signExtended(x: UInt, b: Int) = Fill(x.getWidth - b - 1, x(b)) ## x(b, 0)
+
   /** Create a pointer from 0 to depth - 1
     * @param depth
     *   Max value = depth - 1

@@ -36,6 +36,8 @@ class DecodeStageEntry extends Bundle {
   val instruction =
     DataType.instructionType.cloneType // 32-bits raw instruction
   val pc = DataType.pcType.cloneType // Corresponding PC
+  val spec = DataType.pcType.cloneType // Speculative PC
+  val next = DataType.pcType.cloneType // Next PC
   val valid = Bool() // Validity
 }
 
@@ -54,6 +56,8 @@ class RegisterMappingStageEntry extends Bundle {
   val func7 = DataType.func7Type.cloneType // func7
   val imm = DataType.immediateType.cloneType // Immediate
   val pc = DataType.pcType.cloneType // Corresponding PC
+  val spec = DataType.pcType.cloneType // Speculative PC
+  val next = DataType.pcType.cloneType // Next PC
   val valid = Bool() // Validity
 }
 
@@ -72,5 +76,6 @@ class IssueStageEntry extends Bundle {
   val func7 = DataType.func7Type.cloneType // func7
   val imm = DataType.immediateType.cloneType // Immediate
   val pc = DataType.pcType.cloneType // Corresponding PC
+  val next = DataType.pcType.cloneType // Next PC
   val valid = Bool() // Validity
 }

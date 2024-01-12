@@ -5,6 +5,7 @@ import chisel3.util._
 
 import lltriscv.core._
 import lltriscv.core.record._
+import lltriscv.utils.CoreUtils
 
 /*
  * ALU (Arithmetic and Logic Unit), which is suitable for integer operations (RV32I)
@@ -110,13 +111,13 @@ class ALUDecodeStage extends Module {
   }.elsewhen(inReg.opcode === "b0010011".U) { // I
     io.out.bits.op1 := inReg.rs1.receipt
     // Extend
-    io.out.bits.op2 := Fill(20, inReg.imm(11)) ##
-      inReg.imm(11, 0) // inReg.imm(11) is the sign bit
+    io.out.bits.op2 := CoreUtils.signExtended(inReg.imm, 11)
   }
 
   // rd & pc & valid
   io.out.bits.rd := inReg.rd
   io.out.bits.pc := inReg.pc
+  io.out.bits.next := inReg.next
   io.out.bits.valid := inReg.valid
 
   io.out.valid := true.B // No wait
@@ -171,6 +172,7 @@ class ALUExecuteStage extends Module {
   io.out.bits.rd := inReg.rd
   io.out.bits.pc := inReg.pc
   io.out.bits.valid := inReg.valid
+  io.out.bits.real := inReg.next
 
   io.out.valid := true.B // No wait
 }

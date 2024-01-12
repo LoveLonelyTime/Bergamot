@@ -46,6 +46,7 @@ class ROB(depth: Int) extends Module {
   when(io.tableWrite.wen) {
     for (i <- 0 until 2) {
       table(io.tableWrite.entries(i).id).pc := io.tableWrite.entries(i).pc
+      table(io.tableWrite.entries(i).id).spec := io.tableWrite.entries(i).spec
       table(io.tableWrite.entries(i).id).valid := io.tableWrite.entries(i).valid
       table(io.tableWrite.entries(i).id).commit := false.B
     }
@@ -58,6 +59,9 @@ class ROB(depth: Int) extends Module {
         table(io.tableCommit.entries(i).id).result := io.tableCommit
           .entries(i)
           .result
+        table(io.tableCommit.entries(i).id).real := io.tableCommit
+          .entries(i)
+          .real
         table(io.tableCommit.entries(i).id).commit := true.B
       }
     }

@@ -27,6 +27,7 @@ class ExecuteQueueEntry extends Bundle {
   val func7 = DataType.func7Type.cloneType // func7
   val imm = DataType.immediateType.cloneType // Immediate
   val pc = DataType.pcType.cloneType // Corresponding PC
+  val next = DataType.pcType.cloneType // Next PC
   val valid = Bool() // Validity
 }
 
@@ -45,6 +46,7 @@ class ExecuteEntry extends Bundle {
   val func7 = DataType.func7Type.cloneType // func7
   val imm = DataType.immediateType.cloneType // Immediate
   val pc = DataType.pcType.cloneType // Corresponding PC
+  val next = DataType.pcType.cloneType // Next PC
   val valid = Bool() // Validity
 }
 
@@ -57,6 +59,7 @@ class ExecuteResultEntry extends Bundle {
     DataType.operationType.cloneType // General execution result, writeback to rd
   val rd = DataType.receiptType.cloneType // Destination receipt
   val pc = DataType.pcType.cloneType // Corresponding PC
+  val real = DataType.pcType.cloneType // Real PC
   val valid = Bool() // Validity
 }
 

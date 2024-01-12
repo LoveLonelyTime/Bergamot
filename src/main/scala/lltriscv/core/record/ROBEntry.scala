@@ -18,6 +18,8 @@ import lltriscv.core._
 class ROBTableEntry extends Bundle {
   // Common instruction execution result
   val result = DataType.operationType.cloneType
+  val spec = DataType.pcType.cloneType // Speculative PC
+  val real = DataType.pcType.cloneType // Real PC
   val pc = DataType.pcType.cloneType // Blamed PC
   val commit = Bool() // Has been committed?
   val valid = Bool() // Validity
@@ -34,6 +36,7 @@ class ROBTableWriteIO extends Bundle {
       new Bundle {
         val id = DataType.receiptType.cloneType
         val pc = DataType.pcType.cloneType
+        val spec = DataType.pcType.cloneType
         val valid = Bool()
       }
     )
@@ -52,6 +55,7 @@ class ROBTableCommitIO extends Bundle {
       new Bundle {
         val id = DataType.receiptType.cloneType
         val result = DataType.operationType.cloneType
+        val real = DataType.pcType.cloneType
         val valid = Bool()
       }
     )

@@ -210,12 +210,30 @@ class DecodeStage extends Module {
 
     // TODO: Execute queue arbitrate
     when(inReg(0).valid) {
-      io.out.bits(0).executeQueue := ExecuteQueueType.alu
+      when(
+        io.out.bits(0).opcode === "b1100011".U ||
+          io.out.bits(0).opcode === "b1100111".U ||
+          io.out.bits(0).opcode === "b1101111".U
+      ) {
+        io.out.bits(0).executeQueue := ExecuteQueueType.branch
+      }.otherwise {
+        io.out.bits(0).executeQueue := ExecuteQueueType.alu
+      }
+
     }.otherwise {
       io.out.bits(0).executeQueue := ExecuteQueueType.none
     }
+
     when(inReg(1).valid) {
-      io.out.bits(1).executeQueue := ExecuteQueueType.alu2
+      when(
+        io.out.bits(1).opcode === "b1100011".U ||
+          io.out.bits(1).opcode === "b1100111".U ||
+          io.out.bits(1).opcode === "b1101111".U
+      ) {
+        io.out.bits(1).executeQueue := ExecuteQueueType.branch
+      }.otherwise {
+        io.out.bits(1).executeQueue := ExecuteQueueType.alu2
+      }
     }.otherwise {
       io.out.bits(1).executeQueue := ExecuteQueueType.none
     }
@@ -223,6 +241,8 @@ class DecodeStage extends Module {
     // pc & valid
     io.out.bits(i).valid := inReg(i).valid
     io.out.bits(i).pc := inReg(i).pc
+    io.out.bits(i).next := inReg(i).next
+    io.out.bits(i).spec := inReg(i).spec
   }
 
   io.out.valid := true.B // No wait
@@ -296,11 +316,13 @@ class RegisterMappingStage extends Module {
     io.out.bits(i).imm := inReg(i).imm
 
     io.out.bits(i).pc := inReg(i).pc
+    io.out.bits(i).next := inReg(i).next
     io.out.bits(i).valid := inReg(i).valid
 
     // Write ROB table
     io.tableWrite.entries(i).id := io.mapping.mappingGroup(i).rd
     io.tableWrite.entries(i).pc := inReg(i).pc
+    io.tableWrite.entries(i).spec := inReg(i).spec
     io.tableWrite.entries(i).valid := inReg(i).valid
   }
 
@@ -417,6 +439,7 @@ class IssueStage(executeQueueWidth: Int) extends Module {
       io.enqs(j).enq.bits.func7 := inReg(i).func7
       io.enqs(j).enq.bits.imm := inReg(i).imm
       io.enqs(j).enq.bits.pc := inReg(i).pc
+      io.enqs(j).enq.bits.next := inReg(i).next
       io.enqs(j).enq.bits.valid := inReg(i).valid
     }
   }

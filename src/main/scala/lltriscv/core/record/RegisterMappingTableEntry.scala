@@ -49,6 +49,7 @@ class RegisterMappingIO extends Bundle {
   * A register mapping table entry
   */
 class RegisterMappingTableEntry extends Bundle {
+  // Speculative content
   val content = new DataBroadcastSlotEntry()
 
   // Register content, used to recover speculative register content
