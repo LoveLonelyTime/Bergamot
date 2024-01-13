@@ -55,3 +55,15 @@ class RegisterMappingTableEntry extends Bundle {
   // Register content, used to recover speculative register content
   val recover = DataType.operationType.cloneType
 }
+
+class RegisterUpdateIO extends Bundle {
+  val entries = Output(
+    Vec(
+      2,
+      new Bundle {
+        val rd = DataType.registerType.cloneType
+        val result = DataType.opcodeType.cloneType
+      }
+    )
+  )
+}

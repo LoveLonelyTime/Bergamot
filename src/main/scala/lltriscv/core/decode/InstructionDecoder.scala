@@ -34,6 +34,9 @@ class InstructionDecoder(executeQueueWidth: Int) extends Module {
     val enqs = Vec(executeQueueWidth, new ExecuteQueueEnqueueIO())
     // ROB table write interface
     val tableWrite = new ROBTableWriteIO()
+
+    // Recovery interface
+    val recover = Input(Bool())
   })
 
   // Pipeline stages
@@ -50,6 +53,10 @@ class InstructionDecoder(executeQueueWidth: Int) extends Module {
   registerMappingStage.io.tableWrite <> io.tableWrite
 
   issueStage.io.broadcast <> io.broadcast
+
+  decodeStage.io.recover := io.recover
+  registerMappingStage.io.recover := io.recover
+  issueStage.io.recover := io.recover
 }
 
 /** Decode stage
@@ -63,6 +70,9 @@ class DecodeStage extends Module {
     // Pipeline interface
     val in = Flipped(DecoupledIO(Vec(2, new DecodeStageEntry())))
     val out = DecoupledIO(Vec(2, new RegisterMappingStageEntry()))
+
+    // Recovery interface
+    val recover = Input(Bool())
   })
   // Pipeline logic
   private val inReg = Reg(Vec(2, new DecodeStageEntry()))
@@ -246,6 +256,11 @@ class DecodeStage extends Module {
   }
 
   io.out.valid := true.B // No wait
+
+  // Recovery logic
+  when(io.recover) {
+    inReg.foreach(_.valid := false.B)
+  }
 }
 
 /** Register mapping stage
@@ -263,6 +278,9 @@ class RegisterMappingStage extends Module {
     val mapping = new RegisterMappingIO()
     // ROBTable interface
     val tableWrite = new ROBTableWriteIO()
+
+    // Recovery logic
+    val recover = Input(Bool())
   })
 
   // Pipeline logic
@@ -322,6 +340,7 @@ class RegisterMappingStage extends Module {
     // Write ROB table
     io.tableWrite.entries(i).id := io.mapping.mappingGroup(i).rd
     io.tableWrite.entries(i).pc := inReg(i).pc
+    io.tableWrite.entries(i).rd := inReg(i).rd
     io.tableWrite.entries(i).spec := inReg(i).spec
     io.tableWrite.entries(i).valid := inReg(i).valid
   }
@@ -331,6 +350,11 @@ class RegisterMappingStage extends Module {
 
   // Waiting for mapping
   io.out.valid := io.mapping.ready
+
+  // Recovery logic
+  when(io.recover) {
+    inReg.foreach(_.valid := false.B)
+  }
 }
 
 /** Issue stage
@@ -355,6 +379,9 @@ class IssueStage(executeQueueWidth: Int) extends Module {
     val broadcast = Flipped(new DataBroadcastIO())
     // Execute queue interfaces
     val enqs = Vec(executeQueueWidth, new ExecuteQueueEnqueueIO())
+
+    // Recovery logic
+    val recover = Input(Bool())
   })
 
   private val inReg = Reg(Vec(2, new IssueStageEntry()))
@@ -454,5 +481,10 @@ class IssueStage(executeQueueWidth: Int) extends Module {
   io.in.ready := queueReady(0) && queueReady(1)
   when(io.in.valid && io.in.ready) {
     inReg := io.in.bits
+  }
+
+  // Recovery logic
+  when(io.recover) {
+    inReg.foreach(_.valid := false.B)
   }
 }

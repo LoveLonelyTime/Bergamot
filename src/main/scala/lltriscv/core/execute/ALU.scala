@@ -22,6 +22,9 @@ class ALU extends Module {
     // Pipeline interface
     val in = Flipped(DecoupledIO(new ExecuteEntry()))
     val out = DecoupledIO(new ExecuteResultEntry())
+
+    // Recovery logic
+    val recover = Input(Bool())
   })
   private val aluDecodeStage = Module(new ALUDecodeStage())
   private val aluExecuteStage = Module(new ALUExecuteStage())
@@ -29,6 +32,10 @@ class ALU extends Module {
   io.in <> aluDecodeStage.io.in
   aluDecodeStage.io.out <> aluExecuteStage.io.in
   aluExecuteStage.io.out <> io.out
+
+  // Recovery logic
+  aluDecodeStage.io.recover := io.recover
+  aluExecuteStage.io.recover := io.recover
 }
 
 /** ALU decode stage
@@ -43,6 +50,9 @@ class ALUDecodeStage extends Module {
     // Pipeline interface
     val in = Flipped(DecoupledIO(new ExecuteEntry()))
     val out = DecoupledIO(new ALUExecuteStageEntry())
+
+    // Recovery logic
+    val recover = Input(Bool())
   })
   // Pipeline logic
   private val inReg = Reg(new ExecuteEntry())
@@ -121,6 +131,11 @@ class ALUDecodeStage extends Module {
   io.out.bits.valid := inReg.valid
 
   io.out.valid := true.B // No wait
+
+  // Recovery logic
+  when(io.recover) {
+    inReg.valid := false.B
+  }
 }
 
 /** ALU execute stage
@@ -134,6 +149,9 @@ class ALUExecuteStage extends Module {
     // Pipeline interface
     val in = Flipped(DecoupledIO(new ALUExecuteStageEntry()))
     val out = DecoupledIO(new ExecuteResultEntry())
+
+    // Recovery logic
+    val recover = Input(Bool())
   })
   // Pipeline logic
   private val inReg = Reg(new ALUExecuteStageEntry())
@@ -175,4 +193,9 @@ class ALUExecuteStage extends Module {
   io.out.bits.real := inReg.next
 
   io.out.valid := true.B // No wait
+
+  // Recovery logic
+  when(io.recover) {
+    inReg.valid := false.B
+  }
 }

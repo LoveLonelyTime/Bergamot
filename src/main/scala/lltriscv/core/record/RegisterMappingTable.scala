@@ -27,6 +27,10 @@ class RegisterMappingTable extends Module {
     val alloc = Flipped(DecoupledIO(DataType.receiptType))
     // Broadcast interface
     val broadcast = Flipped(new DataBroadcastIO())
+    // Update interface
+    val update = Flipped(new RegisterUpdateIO())
+    // Recovery interface
+    val recover = Input(Bool())
   })
 
   // TODO:  Building register types
@@ -118,6 +122,38 @@ class RegisterMappingTable extends Module {
           .rd
       }
     }
+  }
+
+  // Update logic
+  for (i <- 0 until 2)
+    table(io.update.entries(i).rd).recover := io.update.entries(i).result
+
+  // Recovery logic
+  when(io.recover) {
+    printf("------Register Recover Start------\n")
+    table.foreach(item => {
+      item.content.pending := false.B
+      item.content.receipt := item.recover
+    })
+
+    for (i <- 0 until 32) {
+      printf("r%d = %d\n", i.U, table(i).recover)
+    }
+    for (i <- 0 until 2) {
+      printf(
+        "Update r%d = %d\n",
+        io.update.entries(i).rd,
+        io.update
+          .entries(i)
+          .result
+      )
+    }
+
+    // Update bypass
+    for (i <- 0 until 2)
+      table(io.update.entries(i).rd).content.receipt := io.update
+        .entries(i)
+        .result
   }
 
   /*---------------------------------Table logic end-------------------------------*/

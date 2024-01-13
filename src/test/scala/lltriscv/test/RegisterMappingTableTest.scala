@@ -14,69 +14,16 @@ import lltriscv.core.broadcast.DataBroadcastIO
 import lltriscv.core.broadcast.PriorityBroadcaster
 import lltriscv.core.decode.InstructionDecoder
 import lltriscv.core.broadcast.RoundRobinBroadcaster
-
-class RetireMock extends Module {
-  val io = IO(new Bundle {
-    val retired = Flipped(DecoupledIO(DataType.receiptType))
-    val tableRetire = Flipped(new ROBTableRetireIO(8))
-  })
-
-  private val id1 = io.retired.bits(30, 0) ## 0.U
-  private val id2 = io.retired.bits(30, 0) ## 1.U
-
-  private val retire1 =
-    io.tableRetire.entries(id1).commit || !io.tableRetire.entries(id1).valid
-
-  private val retire2 =
-    io.tableRetire.entries(id2).commit || !io.tableRetire.entries(id2).valid
-
-  io.retired.ready := false.B
-  when(io.retired.valid && retire1 && retire2) {
-    io.retired.ready := true.B
-    when(
-      io.tableRetire.entries(id1).valid || io.tableRetire.entries(id2).valid
-    ) {
-      printf(
-        "retired instruction: \n pc = %d , r = %d, v = %d \n pc = %d , r = %d, v = %d \n",
-        io.tableRetire.entries(id1).pc,
-        io.tableRetire.entries(id1).result,
-        io.tableRetire.entries(id1).valid,
-        io.tableRetire.entries(id2).pc,
-        io.tableRetire.entries(id2).result,
-        io.tableRetire.entries(id2).valid
-      )
-
-      when(
-        io.tableRetire.entries(id1).valid &&
-          io.tableRetire.entries(id1).real =/= io.tableRetire.entries(id1).spec
-      ) {
-        printf(
-          "spec violate!!!: pc = %d, sepc = %d, real = %d\n",
-          io.tableRetire.entries(id1).pc,
-          io.tableRetire.entries(id1).spec,
-          io.tableRetire.entries(id1).real
-        )
-      }
-
-      when(
-        io.tableRetire.entries(id2).valid &&
-          io.tableRetire.entries(id2).real =/= io.tableRetire.entries(id2).spec
-      ) {
-        printf(
-          "spec violate!!!: pc = %d, sepc = %d, real = %d\n",
-          io.tableRetire.entries(id2).pc,
-          io.tableRetire.entries(id2).spec,
-          io.tableRetire.entries(id2).real
-        )
-      }
-    }
-  }
-}
+import lltriscv.core.retire.InstructionRetire
+import lltriscv.core.fetch.PCVerifyStage
+import lltriscv.core.fetch.PCVerifyStageEntry
 
 class CoreTest extends Module {
   val io = IO(new Bundle {
-    val in = Flipped(DecoupledIO(Vec(2, new DecodeStageEntry())))
+    val in = Flipped(DecoupledIO(Vec(2, new PCVerifyStageEntry())))
+    val pc = Output(DataType.pcType.cloneType)
   })
+  private val fetcher = Module(new PCVerifyStage())
   private val registerMappingTable = Module(new RegisterMappingTable())
   private val rob = Module(new ROB(8))
   private val instructionDecoder = Module(new InstructionDecoder(3))
@@ -95,7 +42,10 @@ class CoreTest extends Module {
 
   private val broadcast = Module(new RoundRobinBroadcaster(3))
 
-  private val retireMock = Module(new RetireMock())
+  private val retireMock = Module(new InstructionRetire(8))
+
+  fetcher.io.in <> io.in
+  io.pc := fetcher.io.pc
 
   aluExecuteQueue.io.broadcast <> broadcast.io.broadcast
   aluExecuteQueue2.io.broadcast <> broadcast.io.broadcast
@@ -115,16 +65,30 @@ class CoreTest extends Module {
   registerMappingTable.io.mapping <> instructionDecoder.io.mapping
   registerMappingTable.io.alloc <> rob.io.alloc
   registerMappingTable.io.broadcast <> broadcast.io.broadcast
+  registerMappingTable.io.update <> retireMock.io.update
+  registerMappingTable.io.recover <> retireMock.io.recover
   rob.io.retired <> retireMock.io.retired
 
   instructionDecoder.io.broadcast <> broadcast.io.broadcast
 
-  instructionDecoder.io.in <> io.in
+  instructionDecoder.io.in <> fetcher.io.out
   instructionDecoder.io.enqs(0) <> aluExecuteQueue.io.enqAndType
   instructionDecoder.io.enqs(1) <> aluExecuteQueue2.io.enqAndType
   instructionDecoder.io.enqs(2) <> branchExecuteQueue.io.enqAndType
 
   retireMock.io.tableRetire <> rob.io.tableRetire
+
+  rob.io.recover := retireMock.io.recover
+  instructionDecoder.io.recover := retireMock.io.recover
+  aluExecuteQueue.io.recover := retireMock.io.recover
+  aluExecuteQueue2.io.recover := retireMock.io.recover
+  branchExecuteQueue.io.recover := retireMock.io.recover
+  alu.io.recover := retireMock.io.recover
+  alu2.io.recover := retireMock.io.recover
+  branch.io.recover := retireMock.io.recover
+
+  fetcher.io.recover := retireMock.io.recover
+  fetcher.io.correctPC := retireMock.io.correctPC
 }
 
 class RegisterMappingTableTest extends AnyFreeSpec with ChiselScalatestTester {
@@ -133,140 +97,68 @@ class RegisterMappingTableTest extends AnyFreeSpec with ChiselScalatestTester {
   }
 
   "RegisterMappingTable should be OK" in {
-    test(new CoreTest()).withAnnotations(Seq(WriteVcdAnnotation)) { dut =>
-      // rs2 rs1 rd
-      var __pc = 0
-      def apc = {
-        __pc = __pc + 1
-        __pc
-      }
+    test(new CoreTest()).withAnnotations(
+      Seq(WriteVcdAnnotation, VerilatorBackendAnnotation)
+    ) { dut =>
+      val memory = Array.ofDim[UInt](64)
 
       def toBinaryString(x: Int, width: Int) =
         String
           .format("%" + width + "s", Integer.toBinaryString(x))
           .replace(' ', '0')
 
-      def add(rs1: Int, rs2: Int, rd: Int, pc: Int) =
-        (
-          s"b0000000_${toBinaryString(rs2, 5)}_${toBinaryString(rs1, 5)}_000_${toBinaryString(rd, 5)}_0110011".U,
-          pc.U(32.W),
-          (pc + 4).U(32.W),
-          (pc + 4).U(32.W),
-          true.B
-        )
+      def add(rs1: Int, rs2: Int, rd: Int) =
+        s"b0000000_${toBinaryString(rs2, 5)}_${toBinaryString(rs1, 5)}_000_${toBinaryString(rd, 5)}_0110011".U
 
-      def addi(rs1: Int, imm: Int, rd: Int, pc: Int) =
-        (
-          s"b${toBinaryString(imm, 12)}_${toBinaryString(rs1, 5)}_000_${toBinaryString(rd, 5)}_0010011".U,
-          pc.U(32.W),
-          (pc + 4).U(32.W),
-          (pc + 4).U(32.W),
-          true.B
-        )
+      def addi(rs1: Int, imm: Int, rd: Int) =
+        s"b${toBinaryString(imm, 12)}_${toBinaryString(rs1, 5)}_000_${toBinaryString(rd, 5)}_0010011".U
 
-      def bne(rs1: Int, rs2: Int, pc: Int) =
-        (
-          s"b0000000_${toBinaryString(rs2, 5)}_${toBinaryString(rs1, 5)}_001_00110_1100011".U,
-          pc.U(32.W),
-          (pc + 4).U(32.W),
-          (pc + 4).U(32.W),
-          true.B
-        )
+      def bne(rs1: Int, rs2: Int) =
+        s"b0000000_${toBinaryString(rs2, 5)}_${toBinaryString(rs1, 5)}_001_01000_1100011".U
 
-      def nop() = (
-        0.U(32.W),
-        0.U(32.W),
-        0.U(32.W),
-        0.U(32.W),
-        false.B
-      )
+      for (i <- 0 until memory.length) memory(i) = 0.U(32.W)
+      memory(0) = addi(0, 1, 1)
+      memory(1) = add(1, 1, 1)
+      memory(2) = bne(0, 1)
+      memory(3) = add(1, 1, 1) // skip
+      memory(4) = addi(1, 5, 1)
 
-      def pushInstruction(
-          instr1: UInt,
-          pc1: UInt,
-          next1: UInt,
-          spec1: UInt,
-          valid1: Bool,
-          instr2: UInt,
-          pc2: UInt,
-          next2: UInt,
-          spec2: UInt,
-          valid2: Bool
-      ) = {
-        dut.io.in.valid.poke(false.B)
-        dut.io.in.bits.foreach(_.valid.poke(false.B))
-        while (!dut.io.in.ready.peekBoolean()) dut.clock.step()
-        dut.io.in.valid.poke(true.B)
-        dut.io.in.bits(0).pc.poke(pc1)
-        dut.io.in.bits(0).spec.poke(spec1)
-        dut.io.in.bits(0).next.poke(next1)
-        dut.io.in.bits(0).instruction.poke(instr1)
-        dut.io.in.bits(0).valid.poke(valid1)
-
-        dut.io.in.bits(1).pc.poke(pc2)
-        dut.io.in.bits(1).spec.poke(spec2)
-        dut.io.in.bits(1).next.poke(next2)
-        dut.io.in.bits(1).instruction.poke(instr2)
-        dut.io.in.bits(1).valid.poke(valid2)
-
-        dut.clock.step()
-        dut.io.in.bits.foreach(_.valid.poke(false.B))
-        dut.io.in.valid.poke(false.B)
+      def get_mem(x: Int) = {
+        if (x < memory.length) {
+          memory(x)
+        } else {
+          0.U(32.W)
+        }
       }
 
-      // val instrs = List(
-      //   addi(0, 1, 1, apc),
-      //   add(1, 1, 1, apc),
-      //   add(1, 1, 1, apc),
-      //   addi(1, 1, 2, apc),
-      //   add(2, 2, 2, apc),
-      //   add(2, 2, 2, apc),
-      //   bne(1, 2, apc)
-      // )
+      for (j <- 0 to 100) {
+        for (i <- 0 until 2) {
+          dut.io.in
+            .bits(i)
+            .instruction
+            .poke(get_mem((dut.io.pc.peekInt() / 4 + i).toInt))
+          dut.io.in
+            .bits(i)
+            .pc
+            .poke((dut.io.pc.peekInt() + 4 * i).U)
 
-      val instrs = List(
-        addi(0, 1, 1, apc),
-        addi(0, 1, 1, apc),
-        addi(0, 1, 1, apc),
-        addi(0, 1, 1, apc),
-        addi(0, 1, 1, apc),
-        addi(0, 1, 1, apc),
-        addi(0, 1, 1, apc)
-      )
-
-      instrs
-        .grouped(2)
-        .foreach(grp => {
-          if (grp.length == 2) {
-            pushInstruction(
-              grp(0)._1,
-              grp(0)._2,
-              grp(0)._3,
-              grp(0)._4,
-              grp(0)._5,
-              grp(1)._1,
-              grp(1)._2,
-              grp(1)._3,
-              grp(1)._4,
-              grp(1)._5
+          dut.io.in
+            .bits(i)
+            .next
+            .poke(
+              (dut.io.pc.peekInt() + 4 * (i + 1)).U
             )
-          } else if (grp.length == 1) {
-            val np = nop()
-            pushInstruction(
-              grp(0)._1,
-              grp(0)._2,
-              grp(0)._3,
-              grp(0)._4,
-              grp(0)._5,
-              np._1,
-              np._2,
-              np._3,
-              np._4,
-              np._5
+          dut.io.in
+            .bits(i)
+            .spec
+            .poke(
+              (dut.io.pc.peekInt() + 4 * (i + 1)).U
             )
-          }
-        })
-      dut.clock.step(50)
+          dut.io.in.bits(i).valid.poke(true.B)
+        }
+        dut.io.in.valid.poke(true.B)
+        dut.clock.step()
+      }
     }
   }
 }

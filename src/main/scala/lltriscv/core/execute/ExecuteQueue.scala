@@ -37,6 +37,9 @@ abstract class ExecuteQueue(depth: Int, queueType: ExecuteQueueType.Type)
 
     // Broadcast interface
     val broadcast = Flipped(new DataBroadcastIO())
+
+    // Recovery interface
+    val recover = Input(Bool())
   })
 
   require(depth > 0, "Execute queue depth must be greater than 0")
@@ -121,5 +124,10 @@ class InOrderedExecuteQueue(depth: Int, queueType: ExecuteQueueType.Type)
   // Write logic
   when(doWrite) {
     queue(writePtr) := io.enqAndType.enq.bits
+  }
+
+  // Recovery logic
+  when(io.recover) {
+    queue.foreach(_.valid := false.B)
   }
 }

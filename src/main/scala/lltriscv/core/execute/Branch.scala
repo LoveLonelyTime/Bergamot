@@ -12,6 +12,9 @@ class Branch extends Module {
     // Pipeline interface
     val in = Flipped(DecoupledIO(new ExecuteEntry()))
     val out = DecoupledIO(new ExecuteResultEntry())
+
+    // Recovery logic
+    val recover = Input(Bool())
   })
   private val branchDecodeStage = Module(new BranchDecodeStage())
   private val branchExecuteStage = Module(new BranchExecuteStage())
@@ -19,6 +22,10 @@ class Branch extends Module {
   io.in <> branchDecodeStage.io.in
   branchDecodeStage.io.out <> branchExecuteStage.io.in
   branchExecuteStage.io.out <> io.out
+
+  // Recovery logic
+  branchDecodeStage.io.recover := io.recover
+  branchExecuteStage.io.recover := io.recover
 }
 
 class BranchDecodeStage extends Module {
@@ -26,6 +33,9 @@ class BranchDecodeStage extends Module {
     // Pipeline interface
     val in = Flipped(DecoupledIO(new ExecuteEntry()))
     val out = DecoupledIO(new BranchExecuteStageEntry())
+
+    // Recovery logic
+    val recover = Input(Bool())
   })
 
   // Pipeline logic
@@ -82,6 +92,11 @@ class BranchDecodeStage extends Module {
   io.out.bits.valid := inReg.valid
 
   io.out.valid := true.B // No wait
+
+  // Recovery logic
+  when(io.recover) {
+    inReg.valid := false.B
+  }
 }
 
 class BranchExecuteStage extends Module {
@@ -89,6 +104,9 @@ class BranchExecuteStage extends Module {
     // Pipeline interface
     val in = Flipped(DecoupledIO(new BranchExecuteStageEntry()))
     val out = DecoupledIO(new ExecuteResultEntry())
+
+    // Recovery logic
+    val recover = Input(Bool())
   })
 
   // Pipeline logic
@@ -153,4 +171,9 @@ class BranchExecuteStage extends Module {
   io.out.bits.valid := inReg.valid
 
   io.out.valid := true.B // No wait
+
+  // Recovery logic
+  when(io.recover) {
+    inReg.valid := false.B
+  }
 }
