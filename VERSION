@@ -1,0 +1,6 @@
+Verilator 4.226 2022-08-31 rev v4.226
+
+LLVM (http://llvm.org/):
+  LLVM version 17.0.0git
+  Optimized build.
+CIRCT firtool-1.43.0
