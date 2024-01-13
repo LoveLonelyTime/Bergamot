@@ -46,10 +46,10 @@ object ALUOperationType extends ChiselEnum {
   */
 class ALUExecuteStageEntry extends Bundle {
   val op = ALUOperationType() // ALU operation type
-  val op1 = DataType.operationType.cloneType // Operand 1
-  val op2 = DataType.operationType.cloneType // Operand 2
-  val rd = DataType.receiptType.cloneType // Destination receipt
-  val pc = DataType.pcType.cloneType // Corresponding PC
-  val next = DataType.pcType.cloneType // Next PC
+  val op1 = DataType.operation // Operand 1
+  val op2 = DataType.operation // Operand 2
+  val rd = DataType.receipt // Destination receipt
+  val pc = DataType.pc // Corresponding PC
+  val next = DataType.pc // Next PC
   val valid = Bool() // Validity
 }

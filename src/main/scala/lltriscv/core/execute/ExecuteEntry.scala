@@ -12,41 +12,22 @@ import lltriscv.core.broadcast.DataBroadcastSlotEntry
  * Copyright (C) 2024-2025 LoveLonelyTime
  */
 
-/** Execute queue entry
-  *
-  * The input of reservation station
-  */
-class ExecuteQueueEntry extends Bundle {
-  val opcode = DataType.opcodeType.cloneType // opcode
-  val instructionType = InstructionType() // Instruction Type
-  val executeQueue = ExecuteQueueType() // Execute queue
-  val rs1 = new DataBroadcastSlotEntry() // rs1
-  val rs2 = new DataBroadcastSlotEntry() // rs2
-  val rd = DataType.receiptType.cloneType // rd
-  val func3 = DataType.func3Type.cloneType // func3
-  val func7 = DataType.func7Type.cloneType // func7
-  val imm = DataType.immediateType.cloneType // Immediate
-  val pc = DataType.pcType.cloneType // Corresponding PC
-  val next = DataType.pcType.cloneType // Next PC
-  val valid = Bool() // Validity
-}
-
 /** Execute entry
   *
-  * The output of reservation station, representing an executable instruction
+  * The entry of reservation station, representing an executable instruction
   */
 class ExecuteEntry extends Bundle {
-  val opcode = DataType.opcodeType.cloneType // opcode
+  val opcode = DataType.opcode // opcode
   val instructionType = InstructionType() // Instruction Type
   val executeQueue = ExecuteQueueType() // Execute queue
   val rs1 = new DataBroadcastSlotEntry() // rs1
   val rs2 = new DataBroadcastSlotEntry() // rs2
-  val rd = DataType.receiptType.cloneType // rd
-  val func3 = DataType.func3Type.cloneType // func3
-  val func7 = DataType.func7Type.cloneType // func7
-  val imm = DataType.immediateType.cloneType // Immediate
-  val pc = DataType.pcType.cloneType // Corresponding PC
-  val next = DataType.pcType.cloneType // Next PC
+  val rd = DataType.receipt // rd
+  val func3 = DataType.func3 // func3
+  val func7 = DataType.func7 // func7
+  val imm = DataType.immediate // Immediate
+  val pc = DataType.pc // Corresponding PC
+  val next = DataType.pc // Next PC
   val valid = Bool() // Validity
 }
 
@@ -56,11 +37,22 @@ class ExecuteEntry extends Bundle {
   */
 class ExecuteResultEntry extends Bundle {
   val result =
-    DataType.operationType.cloneType // General execution result, writeback to rd
-  val rd = DataType.receiptType.cloneType // Destination receipt
-  val pc = DataType.pcType.cloneType // Corresponding PC
-  val real = DataType.pcType.cloneType // Real PC
+    DataType.operation // General execution result, writeback to rd
+  val rd = DataType.receipt // Destination receipt
+  val pc = DataType.pc // Corresponding PC
+  val next = DataType.pc // Next PC
+  val real = DataType.pc // Real PC
   val valid = Bool() // Validity
+}
+
+/** ExecuteQueueEnqueueIO
+  *
+  * Execute queue enqueue interface
+  */
+class ExecuteQueueEnqueueIO extends Bundle {
+  val enq = DecoupledIO(new ExecuteEntry()) // Data interface
+  val queueType =
+    Input(ExecuteQueueType()) // Tell the issue stage the queue type, hardwired
 }
 
 /** Execute queue type
@@ -70,6 +62,7 @@ object ExecuteQueueType extends ChiselEnum {
    * none: Discarded instructions
    * memory: Memory access instructions
    * alu: ALU instructions
+   * alu2: ALU instructions, only for test
    * branch: Branch instructions
    */
   val none, memory, alu, alu2, branch = Value

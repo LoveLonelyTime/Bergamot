@@ -5,18 +5,46 @@ import chisel3.util._
 
 import lltriscv.core._
 
+/*
+ * Branch entry
+ *
+ * Copyright (C) 2024-2025 LoveLonelyTime
+ */
+
+/** Branch operation type
+  */
 object BranchOperationType extends ChiselEnum {
+  /*
+   * Reserve operation:
+   * - none: 0
+   * - undefined: 0 (Illegal instruction exception)
+   *
+   * Comparison operation:
+   * - eq: op1 == op2
+   * - ne: op1 != op2
+   * - lt: op1 < op2
+   * - ge: op1 > op2
+   * - ltu: op1 < op2 (unsigned)
+   * - geu: op1 > op2 (unsigned)
+   *
+   * Unconditional operation:
+   * - jal: jump and link
+   */
   val none, undefined, eq, ne, lt, ge, ltu, geu, jal = Value
 }
 
+/** Branch execute stage entry
+  *
+  * The input entry of BranchExecuteStage
+  */
 class BranchExecuteStageEntry extends Bundle {
   val op = BranchOperationType() // Branch operation type
-  val op1 = DataType.operationType.cloneType // Operand 1
-  val op2 = DataType.operationType.cloneType // Operand 2
-  val add1 = DataType.operationType.cloneType // Address addend 1
-  val add2 = DataType.operationType.cloneType // Address addend 2
-  val rd = DataType.receiptType.cloneType // Destination receipt
-  val pc = DataType.pcType.cloneType // Corresponding PC
-  val next = DataType.pcType.cloneType // Next PC
+  val op1 = DataType.operation // Operand 1
+  val op2 = DataType.operation // Operand 2
+  val add1 = DataType.operation // Address addend 1
+  val add2 = DataType.operation // Address addend 2
+  val rd = DataType.receipt // Destination receipt
+  val pc = DataType.pc // Corresponding PC
+  val next = DataType.pc // Next PC
   val valid = Bool() // Validity
 }

@@ -7,13 +7,13 @@ import lltriscv.core.decode.DecodeStageEntry
 
 class PCVerifyStageEntry extends Bundle {
   // Instruction
-  val instruction = DataType.instructionType.cloneType
+  val instruction = DataType.instruction
   // Corresponding PC
-  val pc = DataType.pcType.cloneType
+  val pc = DataType.pc
   // Speculative PC
-  val spec = DataType.pcType.cloneType
+  val spec = DataType.pc
   // Next PC
-  val next = DataType.pcType.cloneType
+  val next = DataType.pc
   // Validity
   val valid = Bool()
 }
@@ -22,13 +22,13 @@ class PCVerifyStage extends Module {
   val io = IO(new Bundle {
     val in = Flipped(DecoupledIO(Vec(2, new PCVerifyStageEntry())))
     val out = DecoupledIO(Vec(2, new DecodeStageEntry()))
-    val pc = Output(DataType.pcType.cloneType)
+    val pc = Output(DataType.pc)
 
-    val correctPC = Input(DataType.pcType.cloneType)
+    val correctPC = Input(DataType.pc)
     val recover = Input(Bool())
   })
 
-  private val pcReg = Reg(DataType.pcType.cloneType)
+  private val pcReg = Reg(DataType.pc)
   io.pc := pcReg
 
   private val inReg = Reg(Vec(2, new PCVerifyStageEntry()))

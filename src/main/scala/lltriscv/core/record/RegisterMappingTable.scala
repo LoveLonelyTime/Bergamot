@@ -24,7 +24,7 @@ class RegisterMappingTable extends Module {
     // Mapping interface
     val mapping = Flipped(new RegisterMappingIO())
     // ROB alloc interface
-    val alloc = Flipped(DecoupledIO(DataType.receiptType))
+    val alloc = Flipped(DecoupledIO(DataType.receipt))
     // Broadcast interface
     val broadcast = Flipped(new DataBroadcastIO())
     // Update interface
@@ -108,33 +108,29 @@ class RegisterMappingTable extends Module {
   /*---------------------------------Mapping logic end-------------------------------*/
 
   /*---------------------------------Table logic start-------------------------------*/
-  for (i <- 0 until 32) {
-    // Broadcast logic
-    for (j <- 0 until 2)
-      CoreUtils.matchBroadcast(table(i).content, io.broadcast.entries(j))
+  // Broadcast logic
+  for (
+    i <- 0 until 32;
+    j <- 0 until 2
+  ) {
 
-    // Write table
-    when(io.mapping.valid && io.mapping.ready) {
-      for (j <- 0 until 2) {
-        table(io.mapping.regGroup(j).rd).content.pending := true.B
-        table(io.mapping.regGroup(j).rd).content.receipt := io.mapping
-          .mappingGroup(j)
-          .rd
-      }
+    CoreUtils.matchBroadcast(table(i).content, io.broadcast.entries(j))
+  }
+
+  // Write table
+  when(io.mapping.valid && io.mapping.ready) {
+    for (i <- 0 until 2) {
+      table(io.mapping.regGroup(i).rd).content.pending := true.B
+      table(io.mapping.regGroup(i).rd).content.receipt := io.mapping
+        .mappingGroup(i)
+        .rd
     }
   }
 
-  // Update logic
-  for (i <- 0 until 2)
-    table(io.update.entries(i).rd).recover := io.update.entries(i).result
-
   // Recovery logic
   when(io.recover) {
+    // Debug printf
     printf("------Register Recover Start------\n")
-    table.foreach(item => {
-      item.content.pending := false.B
-      item.content.receipt := item.recover
-    })
 
     for (i <- 0 until 32) {
       printf("r%d = %d\n", i.U, table(i).recover)
@@ -149,12 +145,15 @@ class RegisterMappingTable extends Module {
       )
     }
 
-    // Update bypass
-    for (i <- 0 until 2)
-      table(io.update.entries(i).rd).content.receipt := io.update
-        .entries(i)
-        .result
+    table.foreach(item => {
+      item.content.pending := false.B
+      item.content.receipt := item.recover
+    })
   }
+
+  // Update logic
+  for (i <- 0 until 2)
+    table(io.update.entries(i).rd).recover := io.update.entries(i).result
 
   /*---------------------------------Table logic end-------------------------------*/
 }

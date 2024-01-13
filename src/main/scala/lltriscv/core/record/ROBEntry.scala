@@ -17,11 +17,11 @@ import lltriscv.core._
   */
 class ROBTableEntry extends Bundle {
   // Common instruction execution result
-  val result = DataType.operationType.cloneType
-  val rd = DataType.registerType.cloneType // Target rd
-  val spec = DataType.pcType.cloneType // Speculative PC
-  val real = DataType.pcType.cloneType // Real PC
-  val pc = DataType.pcType.cloneType // Blamed PC
+  val result = DataType.operation
+  val rd = DataType.register // Target rd
+  val spec = DataType.pc // Speculative PC
+  val real = DataType.pc // Real PC
+  val pc = DataType.pc // Blamed PC
   val commit = Bool() // Has been committed?
   val valid = Bool() // Validity
 }
@@ -35,10 +35,10 @@ class ROBTableWriteIO extends Bundle {
     Vec(
       2,
       new Bundle {
-        val id = DataType.receiptType.cloneType
-        val pc = DataType.pcType.cloneType
-        val rd = DataType.registerType.cloneType
-        val spec = DataType.pcType.cloneType
+        val id = DataType.receipt
+        val pc = DataType.pc
+        val rd = DataType.register
+        val spec = DataType.pc
         val valid = Bool()
       }
     )
@@ -55,9 +55,9 @@ class ROBTableCommitIO extends Bundle {
     Vec(
       2,
       new Bundle {
-        val id = DataType.receiptType.cloneType
-        val result = DataType.operationType.cloneType
-        val real = DataType.pcType.cloneType
+        val id = DataType.receipt
+        val result = DataType.operation
+        val real = DataType.pc
         val valid = Bool()
       }
     )
@@ -73,5 +73,7 @@ class ROBTableCommitIO extends Bundle {
   *   The number of ROB table items, each table entry stores 2 instructions.
   */
 class ROBTableRetireIO(depth: Int) extends Bundle {
-  val entries = Output(Vec(depth * 2, new ROBTableEntry())) // Entries
+  require(depth > 0, "ROB table depth must be greater than 0")
+
+  val entries = Output(Vec(depth * 2, new ROBTableEntry()))
 }

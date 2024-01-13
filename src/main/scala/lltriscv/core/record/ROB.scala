@@ -23,16 +23,17 @@ import lltriscv.utils.CoreUtils
   *   The number of ROB table items, each table entry stores 2 instructions.
   */
 class ROB(depth: Int) extends Module {
+  require(depth > 0, "ROB table depth must be greater than 0")
   val io = IO(new Bundle {
     // Retire interface
-    val retired = DecoupledIO(DataType.receiptType)
+    val retired = DecoupledIO(DataType.receipt)
 
     /*
      * Alloc interface
      * Return the primary receipt of the table item.
      * The receipts of two table entries are (primary receipt << 1 | 1, primary receipt << 1 | 0)
      */
-    val alloc = DecoupledIO(DataType.receiptType)
+    val alloc = DecoupledIO(DataType.receipt)
 
     // ROB table interfaces
     val tableWrite = Flipped(new ROBTableWriteIO())
@@ -42,6 +43,7 @@ class ROB(depth: Int) extends Module {
     // Recovery interface
     val recover = Input(Bool())
   })
+
   // Table logic
   private val table = Reg(Vec(depth * 2, new ROBTableEntry()))
 

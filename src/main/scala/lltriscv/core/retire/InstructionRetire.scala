@@ -8,12 +8,12 @@ import lltriscv.core.record.RegisterUpdateIO
 
 class InstructionRetire(depth: Int) extends Module {
   val io = IO(new Bundle {
-    val retired = Flipped(DecoupledIO(DataType.receiptType))
+    val retired = Flipped(DecoupledIO(DataType.receipt))
     val tableRetire = Flipped(new ROBTableRetireIO(depth))
 
     val update = new RegisterUpdateIO()
     val recover = Output(new Bool())
-    val correctPC = Output(DataType.pcType)
+    val correctPC = Output(DataType.pc)
   })
 
   private val id1 = io.retired.bits(30, 0) ## 0.U

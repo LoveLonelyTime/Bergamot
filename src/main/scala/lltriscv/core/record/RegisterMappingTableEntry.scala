@@ -20,9 +20,9 @@ class RegisterMappingIO extends Bundle {
     Vec(
       2,
       new Bundle {
-        val rs1 = DataType.registerType.cloneType
-        val rs2 = DataType.registerType.cloneType
-        val rd = DataType.registerType.cloneType
+        val rs1 = DataType.register
+        val rs2 = DataType.register
+        val rd = DataType.register
       }
     )
   )
@@ -34,7 +34,7 @@ class RegisterMappingIO extends Bundle {
       new Bundle {
         val rs1 = new DataBroadcastSlotEntry()
         val rs2 = new DataBroadcastSlotEntry()
-        val rd = DataType.receiptType.cloneType
+        val rd = DataType.receipt
       }
     )
   )
@@ -53,16 +53,21 @@ class RegisterMappingTableEntry extends Bundle {
   val content = new DataBroadcastSlotEntry()
 
   // Register content, used to recover speculative register content
-  val recover = DataType.operationType.cloneType
+  val recover = DataType.operation
 }
 
+/** Register update interface
+  *
+  * When an instruction retires, update the status of the core registers through
+  * this interface
+  */
 class RegisterUpdateIO extends Bundle {
   val entries = Output(
     Vec(
       2,
       new Bundle {
-        val rd = DataType.registerType.cloneType
-        val result = DataType.opcodeType.cloneType
+        val rd = DataType.register
+        val result = DataType.opcode
       }
     )
   )

@@ -6,7 +6,22 @@ import chisel3.util._
 import lltriscv.core._
 import lltriscv.core.record._
 import lltriscv.utils.CoreUtils
+import lltriscv.core.decode.InstructionType
 
+/*
+ * Branch processing unit, which is suitable for branch operations
+ *
+ * Copyright (C) 2024-2025 LoveLonelyTime
+ */
+
+/** Branch
+  *
+  * BranchDecodeStage -> BranchExecuteStage
+  *
+  * TODO: Currently, only RV32I is supported
+  *
+  * (jal, jalr, beq, bne, blt, bge, bltu, bgeu)
+  */
 class Branch extends Module {
   val io = IO(new Bundle {
     // Pipeline interface
@@ -28,6 +43,10 @@ class Branch extends Module {
   branchExecuteStage.io.recover := io.recover
 }
 
+/** Branch decode stage
+  *
+  * Identify comparison types and comparison operands
+  */
 class BranchDecodeStage extends Module {
   val io = IO(new Bundle {
     // Pipeline interface
@@ -50,6 +69,7 @@ class BranchDecodeStage extends Module {
 
   io.in.ready := io.out.ready
 
+  // Decode logic
   // op
   io.out.bits.op := BranchOperationType.undefined
   when(inReg.opcode(2) === 1.U) { // jal & jalr
@@ -70,16 +90,16 @@ class BranchDecodeStage extends Module {
   io.out.bits.op2 := inReg.rs2.receipt
 
   // add1
-  when(inReg.opcode(3, 2) === "b01".U) { // jalr
+  when(inReg.instructionType === InstructionType.I) { // I jalr
     io.out.bits.add1 := inReg.rs1.receipt
   }.otherwise { // pc jump
     io.out.bits.add1 := inReg.pc
   }
 
   // add2
-  when(inReg.opcode(3, 2) === "b01".U) { // J
+  when(inReg.instructionType === InstructionType.J) { // J jal
     io.out.bits.add2 := CoreUtils.signExtended(inReg.imm, 20)
-  }.elsewhen(inReg.opcode(3, 2) === "b11".U) { // I
+  }.elsewhen(inReg.instructionType === InstructionType.I) { // I jalr
     io.out.bits.add2 := CoreUtils.signExtended(inReg.imm, 11)
   }.otherwise { // B
     io.out.bits.add2 := CoreUtils.signExtended(inReg.imm, 12)
@@ -99,6 +119,10 @@ class BranchDecodeStage extends Module {
   }
 }
 
+/** Branch execute stage
+  *
+  * Compare and calculate jump addresses
+  */
 class BranchExecuteStage extends Module {
   val io = IO(new Bundle {
     // Pipeline interface
@@ -160,14 +184,16 @@ class BranchExecuteStage extends Module {
       io.out.bits.real := Mux(geu, addPC, inReg.next)
     }
     is(BranchOperationType.jal) {
-      io.out.bits.real := addPC & ~1.U(32.W) // Reset LSB
+      io.out.bits.real := addPC(31, 1) ## 0.U // Reset LSB
     }
   }
 
-  // rd & result & pc & valid
+  io.out.bits.result := inReg.next // Save next PC
+
+  // rd & pc & valid
   io.out.bits.rd := inReg.rd
-  io.out.bits.result := inReg.next
   io.out.bits.pc := inReg.pc
+  io.out.bits.next := inReg.next
   io.out.bits.valid := inReg.valid
 
   io.out.valid := true.B // No wait

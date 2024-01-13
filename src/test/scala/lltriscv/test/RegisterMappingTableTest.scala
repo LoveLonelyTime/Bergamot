@@ -21,7 +21,7 @@ import lltriscv.core.fetch.PCVerifyStageEntry
 class CoreTest extends Module {
   val io = IO(new Bundle {
     val in = Flipped(DecoupledIO(Vec(2, new PCVerifyStageEntry())))
-    val pc = Output(DataType.pcType.cloneType)
+    val pc = Output(DataType.pc)
   })
   private val fetcher = Module(new PCVerifyStage())
   private val registerMappingTable = Module(new RegisterMappingTable())

@@ -19,7 +19,7 @@ class DataBroadcastSlotEntry extends Bundle {
   val pending = Bool() // Has it been received?
   // When it has been received, receipt field is data received
   // Otherwise, receipt field is broadcast receipt
-  val receipt = DataType.receiptType.cloneType
+  val receipt = DataType.receipt
 }
 
 /** Data broadcast entry
@@ -29,9 +29,9 @@ class DataBroadcastSlotEntry extends Bundle {
 class DataBroadcastEntry extends Bundle {
   val valid = Bool()
   // Broadcast receipt
-  val receipt = DataType.receiptType.cloneType
+  val receipt = DataType.receipt
   // Data
-  val data = DataType.operationType.cloneType
+  val data = DataType.operation
 }
 
 /** Data broadcast interface

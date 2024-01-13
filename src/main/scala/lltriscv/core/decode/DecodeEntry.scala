@@ -34,10 +34,10 @@ object InstructionType extends ChiselEnum {
   */
 class DecodeStageEntry extends Bundle {
   val instruction =
-    DataType.instructionType.cloneType // 32-bits raw instruction
-  val pc = DataType.pcType.cloneType // Corresponding PC
-  val spec = DataType.pcType.cloneType // Speculative PC
-  val next = DataType.pcType.cloneType // Next PC
+    DataType.instruction // 32-bits raw instruction
+  val pc = DataType.pc // Corresponding PC
+  val spec = DataType.pc // Speculative PC
+  val next = DataType.pc // Next PC
   val valid = Bool() // Validity
 }
 
@@ -46,18 +46,18 @@ class DecodeStageEntry extends Bundle {
   * The input of register mapping stage
   */
 class RegisterMappingStageEntry extends Bundle {
-  val opcode = DataType.opcodeType.cloneType // opcode
+  val opcode = DataType.opcode // opcode
   val instructionType = InstructionType() // Instruction Type
   val executeQueue = ExecuteQueueType() // Execute queue
-  val rs1 = DataType.registerType.cloneType // rs1
-  val rs2 = DataType.registerType.cloneType // rs2
-  val rd = DataType.registerType.cloneType // rd
-  val func3 = DataType.func3Type.cloneType // func3
-  val func7 = DataType.func7Type.cloneType // func7
-  val imm = DataType.immediateType.cloneType // Immediate
-  val pc = DataType.pcType.cloneType // Corresponding PC
-  val spec = DataType.pcType.cloneType // Speculative PC
-  val next = DataType.pcType.cloneType // Next PC
+  val rs1 = DataType.register // rs1
+  val rs2 = DataType.register // rs2
+  val rd = DataType.register // rd
+  val func3 = DataType.func3 // func3
+  val func7 = DataType.func7 // func7
+  val imm = DataType.immediate // Immediate
+  val pc = DataType.pc // Corresponding PC
+  val spec = DataType.pc // Speculative PC
+  val next = DataType.pc // Next PC
   val valid = Bool() // Validity
 }
 
@@ -66,16 +66,16 @@ class RegisterMappingStageEntry extends Bundle {
   * The input of issue stage
   */
 class IssueStageEntry extends Bundle {
-  val opcode = DataType.opcodeType.cloneType // opcode
+  val opcode = DataType.opcode // opcode
   val instructionType = InstructionType() // Instruction Type
   val executeQueue = ExecuteQueueType() // Execute queue
   val rs1 = new DataBroadcastSlotEntry() // rs1
   val rs2 = new DataBroadcastSlotEntry() // rs2
-  val rd = DataType.receiptType.cloneType // rd
-  val func3 = DataType.func3Type.cloneType // func3
-  val func7 = DataType.func7Type.cloneType // func7
-  val imm = DataType.immediateType.cloneType // Immediate
-  val pc = DataType.pcType.cloneType // Corresponding PC
-  val next = DataType.pcType.cloneType // Next PC
+  val rd = DataType.receipt // rd
+  val func3 = DataType.func3 // func3
+  val func7 = DataType.func7 // func7
+  val imm = DataType.immediate // Immediate
+  val pc = DataType.pc // Corresponding PC
+  val next = DataType.pc // Next PC
   val valid = Bool() // Validity
 }

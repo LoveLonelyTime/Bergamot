@@ -11,14 +11,6 @@ import lltriscv.utils.CoreUtils
  * Copyright (C) 2024-2025 LoveLonelyTime
  */
 
-/** ExecuteQueueEnqueueIO
-  */
-class ExecuteQueueEnqueueIO extends Bundle {
-  val enq = DecoupledIO(new ExecuteEntry()) // Data interface
-  val queueType =
-    Input(ExecuteQueueType()) // Tell the issue stage the queue type, hardwired
-}
-
 /** The abstract class ExecuteQueue
   *
   * Describe the basic interface
@@ -30,6 +22,8 @@ class ExecuteQueueEnqueueIO extends Bundle {
   */
 abstract class ExecuteQueue(depth: Int, queueType: ExecuteQueueType.Type)
     extends Module {
+  require(depth > 0, "Execute queue depth must be greater than 0")
+
   val io = IO(new Bundle {
     // Enq and deq interface
     val enqAndType = Flipped(new ExecuteQueueEnqueueIO())
@@ -41,8 +35,6 @@ abstract class ExecuteQueue(depth: Int, queueType: ExecuteQueueType.Type)
     // Recovery interface
     val recover = Input(Bool())
   })
-
-  require(depth > 0, "Execute queue depth must be greater than 0")
 
   // Hardwired
   io.enqAndType.queueType := queueType
@@ -64,7 +56,7 @@ class InOrderedExecuteQueue(depth: Int, queueType: ExecuteQueueType.Type)
     extends ExecuteQueue(depth, queueType) {
 
   // Read/Wirte pointers
-  private val queue = Reg(Vec(depth, new ExecuteQueueEntry()))
+  private val queue = Reg(Vec(depth, new ExecuteEntry()))
 
   val incrRead = WireInit(false.B)
   val incrWrite = WireInit(false.B)
@@ -80,7 +72,7 @@ class InOrderedExecuteQueue(depth: Int, queueType: ExecuteQueueType.Type)
   io.deq.valid := !emptyReg && // Not empty
     (
       (!queue(readPtr).rs1.pending &&
-        !queue(readPtr).rs2.pending) || // Data is ready
+        !queue(readPtr).rs2.pending) || // Operands are ready
         !queue(readPtr).valid // Or invalid
     )
 

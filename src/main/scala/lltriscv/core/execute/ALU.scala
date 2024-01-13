@@ -6,9 +6,10 @@ import chisel3.util._
 import lltriscv.core._
 import lltriscv.core.record._
 import lltriscv.utils.CoreUtils
+import lltriscv.core.decode.InstructionType
 
 /*
- * ALU (Arithmetic and Logic Unit), which is suitable for integer operations (RV32I)
+ * ALU (Arithmetic and Logic Unit), which is suitable for integer operations
  *
  * Copyright (C) 2024-2025 LoveLonelyTime
  */
@@ -16,6 +17,11 @@ import lltriscv.utils.CoreUtils
 /** ALU execute queue
   *
   * ALUDecodeStage -> ALUExecuteStage
+  *
+  * TODO: Currently, only RV32I is supported
+  *
+  * (lui, auipc, add(i), sub, sll(i), slt(i), sltu(i), xor(i), srl(i), sra(i),
+  * or(i), and(i))
   */
 class ALU extends Module {
   val io = IO(new Bundle {
@@ -66,9 +72,7 @@ class ALUDecodeStage extends Module {
 
   io.in.ready := io.out.ready
 
-  // TODO: optimize
   // Decode logic
-
   // op
   io.out.bits.op := ALUOperationType.undefined
   switch(inReg.func3) {
@@ -92,36 +96,46 @@ class ALUDecodeStage extends Module {
     }
 
     is("b000".U) {
-      when(inReg.opcode === "b0110011".U) { // R
-        when(inReg.func7(5) === 0.U) {
-          io.out.bits.op := ALUOperationType.add
-        }.otherwise {
-          io.out.bits.op := ALUOperationType.sub
-        }
-      }.elsewhen(inReg.opcode === "b0010011".U) { // I
+      // add / sub / addi
+      when(inReg.instructionType === InstructionType.R) {
+        io.out.bits.op := Mux(
+          inReg.func7(5) === 0.U,
+          ALUOperationType.add,
+          ALUOperationType.sub
+        )
+      }.elsewhen(inReg.instructionType === InstructionType.I) {
         io.out.bits.op := ALUOperationType.add
       }
     }
 
     is("b101".U) {
-      when(inReg.func7(5) === 0.U) {
-        io.out.bits.op := ALUOperationType.srl
-      }.otherwise {
-        io.out.bits.op := ALUOperationType.sra
-      }
+      // slr / sra
+      io.out.bits.op := Mux(
+        inReg.func7(5) === 0.U,
+        ALUOperationType.srl,
+        ALUOperationType.sra
+      )
     }
+  }
+
+  // Or U
+  when(inReg.instructionType === InstructionType.U) { // lui / auipc
+    io.out.bits.op := ALUOperationType.add
   }
 
   // op1 & op2
   io.out.bits.op1 := 0.U
   io.out.bits.op2 := 0.U
-  when(inReg.opcode === "b0110011".U) { // R
+  when(inReg.instructionType === InstructionType.R) { // R
     io.out.bits.op1 := inReg.rs1.receipt
     io.out.bits.op2 := inReg.rs2.receipt
-  }.elsewhen(inReg.opcode === "b0010011".U) { // I
+  }.elsewhen(inReg.instructionType === InstructionType.I) { // I
     io.out.bits.op1 := inReg.rs1.receipt
-    // Extend
+    // Extend imm
     io.out.bits.op2 := CoreUtils.signExtended(inReg.imm, 11)
+  }.elsewhen(inReg.instructionType === InstructionType.U) { // lui / auipc
+    io.out.bits.op1 := Mux(inReg.func7(5) === 0.U, inReg.pc, 0.U)
+    io.out.bits.op2 := inReg.imm // Upper
   }
 
   // rd & pc & valid
@@ -165,7 +179,6 @@ class ALUExecuteStage extends Module {
     inReg := io.in.bits
   }
 
-  // TODO: complete
   // Execute
   io.out.bits.result := 0.U
   switch(inReg.op) {
@@ -184,14 +197,29 @@ class ALUExecuteStage extends Module {
     is(ALUOperationType.xor) {
       io.out.bits.result := inReg.op1 ^ inReg.op2
     }
+    is(ALUOperationType.sll) {
+      io.out.bits.result := inReg.op1 << inReg.op2(24, 20)
+    }
+    is(ALUOperationType.srl) {
+      io.out.bits.result := inReg.op1 >> inReg.op2(24, 20)
+    }
+    is(ALUOperationType.sra) {
+      io.out.bits.result := (inReg.op1.asSInt >> inReg.op2(24, 20)).asUInt
+    }
+    is(ALUOperationType.slt) {
+      io.out.bits.result := Mux(inReg.op1.asSInt < inReg.op2.asSInt, 1.U, 0.U)
+    }
+    is(ALUOperationType.sltu) {
+      io.out.bits.result := Mux(inReg.op1 < inReg.op2, 1.U, 0.U)
+    }
   }
 
   // rd & pc & valid
   io.out.bits.rd := inReg.rd
   io.out.bits.pc := inReg.pc
-  io.out.bits.valid := inReg.valid
+  io.out.bits.next := inReg.next
   io.out.bits.real := inReg.next
-
+  io.out.bits.valid := inReg.valid
   io.out.valid := true.B // No wait
 
   // Recovery logic

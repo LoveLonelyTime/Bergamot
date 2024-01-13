@@ -85,11 +85,11 @@ class DecodeStage extends Module {
     inReg := io.in.bits
   }
 
-  // TODO: Complete
   // Decode logic
   for (i <- 0 until 2) {
     // opcode
     io.out.bits(i).opcode := inReg(i).instruction(6, 0)
+
     // Instruction Type
     val instructionType = WireInit(InstructionType.UK)
     switch(inReg(i).instruction(6, 2)) {
@@ -127,14 +127,6 @@ class DecodeStage extends Module {
       }
       // I: jalr
       is("b11001".U) {
-        instructionType := InstructionType.I
-      }
-      // I: fence, fence.i
-      is("b00011".U) {
-        instructionType := InstructionType.I
-      }
-      // I: ecall, ebreak, csrrw, csrrs, csrrc, csrrwi, csrrsi, csrrci
-      is("b11100".U) {
         instructionType := InstructionType.I
       }
     }
@@ -218,41 +210,27 @@ class DecodeStage extends Module {
       }
     }
 
-    // TODO: Execute queue arbitrate
-    when(inReg(0).valid) {
-      when(
-        io.out.bits(0).opcode === "b1100011".U ||
-          io.out.bits(0).opcode === "b1100111".U ||
-          io.out.bits(0).opcode === "b1101111".U
-      ) {
-        io.out.bits(0).executeQueue := ExecuteQueueType.branch
-      }.otherwise {
-        io.out.bits(0).executeQueue := ExecuteQueueType.alu
-      }
-
+    // Execute queue arbitration
+    when(
+      io.out.bits(i).opcode(6, 2) === "b11011".U || // jal
+        io.out.bits(i).opcode(6, 2) === "b11001".U || // jalr
+        instructionType === InstructionType.B
+    ) {
+      io.out.bits(i).executeQueue := ExecuteQueueType.branch
+    }.elsewhen(
+      io.out.bits(i).opcode(6, 2) === "b00000".U || // load
+        instructionType === InstructionType.S
+    ) {
+      io.out.bits(i).executeQueue := ExecuteQueueType.memory
     }.otherwise {
-      io.out.bits(0).executeQueue := ExecuteQueueType.none
-    }
-
-    when(inReg(1).valid) {
-      when(
-        io.out.bits(1).opcode === "b1100011".U ||
-          io.out.bits(1).opcode === "b1100111".U ||
-          io.out.bits(1).opcode === "b1101111".U
-      ) {
-        io.out.bits(1).executeQueue := ExecuteQueueType.branch
-      }.otherwise {
-        io.out.bits(1).executeQueue := ExecuteQueueType.alu2
-      }
-    }.otherwise {
-      io.out.bits(1).executeQueue := ExecuteQueueType.none
+      io.out.bits(i).executeQueue := ExecuteQueueType.alu
     }
 
     // pc & valid
-    io.out.bits(i).valid := inReg(i).valid
     io.out.bits(i).pc := inReg(i).pc
     io.out.bits(i).next := inReg(i).next
     io.out.bits(i).spec := inReg(i).spec
+    io.out.bits(i).valid := inReg(i).valid
   }
 
   io.out.valid := true.B // No wait
@@ -265,7 +243,7 @@ class DecodeStage extends Module {
 
 /** Register mapping stage
   *
-  * Getand allocate renaming registers and ROB
+  * Allocate and get renaming registers and ROB
   *
   * Multicycle stage
   */
@@ -372,6 +350,8 @@ class RegisterMappingStage extends Module {
   *   Execute queue width
   */
 class IssueStage(executeQueueWidth: Int) extends Module {
+  require(executeQueueWidth > 0, "Execute queue depth must be greater than 0")
+
   val io = IO(new Bundle {
     // Pipeline interface
     val in = Flipped(DecoupledIO(Vec(2, new IssueStageEntry())))
@@ -433,7 +413,6 @@ class IssueStage(executeQueueWidth: Int) extends Module {
     }
   }
 
-  // TODO: connect
   for (i <- 0 until executeQueueWidth) {
     io.enqs(i).enq.bits := 0.U.asTypeOf(new ExecuteEntry())
   }
