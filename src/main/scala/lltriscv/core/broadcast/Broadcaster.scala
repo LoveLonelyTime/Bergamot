@@ -27,6 +27,7 @@ import lltriscv.utils.CoreUtils
   *   Execute queue width
   */
 abstract class Broadcaster(executeQueueWidth: Int) extends Module {
+  require(executeQueueWidth > 0, "Execute queue depth must be greater than 0")
   val io = IO(new Bundle {
     // Execute queue interfaces
     val queues =

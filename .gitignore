@@ -351,4 +351,5 @@ hs_err_pid*
 
 # Generated
 generated/
+test.bin
 

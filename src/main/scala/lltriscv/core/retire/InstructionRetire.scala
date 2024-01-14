@@ -6,12 +6,32 @@ import lltriscv.core._
 import lltriscv.core.record.ROBTableRetireIO
 import lltriscv.core.record.RegisterUpdateIO
 
-class InstructionRetire(depth: Int) extends Module {
-  val io = IO(new Bundle {
-    val retired = Flipped(DecoupledIO(DataType.receipt))
-    val tableRetire = Flipped(new ROBTableRetireIO(depth))
+/*
+ * Instruction retire
+ *
+ * When an instruction is in a non speculative and committed status, it will be retired,
+ * and the retired instruction will actually change the core status.
+ * It will detect the results of retired instructions, such as whether they cause prediction failures,
+ * whether they trigger exceptions, and write memory.
+ *
+ * Copyright (C) 2024-2025 LoveLonelyTime
+ */
 
+/** Instruction retire
+  *
+  * @param depth
+  *   ROB table depth
+  */
+class InstructionRetire(depth: Int) extends Module {
+  require(depth > 0, "ROB table depth must be greater than 0")
+  val io = IO(new Bundle {
+    // Retired interface
+    val retired = Flipped(DecoupledIO(DataType.receipt))
+    // Table retire interface
+    val tableRetire = Flipped(new ROBTableRetireIO(depth))
+    // Register update interface
     val update = new RegisterUpdateIO()
+    // Recovery interface
     val recover = Output(new Bool())
     val correctPC = Output(DataType.pc)
   })

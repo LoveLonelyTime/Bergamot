@@ -130,25 +130,31 @@ class RegisterMappingTable extends Module {
   // Recovery logic
   when(io.recover) {
     // Debug printf
-    printf("------Register Recover Start------\n")
+    // printf("------Register Recover Start------\n")
 
-    for (i <- 0 until 32) {
-      printf("r%d = %d\n", i.U, table(i).recover)
-    }
-    for (i <- 0 until 2) {
-      printf(
-        "Update r%d = %d\n",
-        io.update.entries(i).rd,
-        io.update
-          .entries(i)
-          .result
-      )
-    }
+    // for (i <- 0 until 32) {
+    //   printf("r%d = %d\n", i.U, table(i).recover)
+    // }
+    // for (i <- 0 until 2) {
+    //   printf(
+    //     "Update r%d = %d\n",
+    //     io.update.entries(i).rd,
+    //     io.update
+    //       .entries(i)
+    //       .result
+    //   )
+    // }
 
     table.foreach(item => {
       item.content.pending := false.B
       item.content.receipt := item.recover
     })
+
+    // Update bypass
+    for (i <- 0 until 2)
+      table(io.update.entries(i).rd).content.receipt := io.update
+        .entries(i)
+        .result
   }
 
   // Update logic

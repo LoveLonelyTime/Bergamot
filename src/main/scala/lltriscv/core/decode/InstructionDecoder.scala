@@ -24,6 +24,7 @@ import lltriscv.core.broadcast.DataBroadcastIO
   *   Execute queue width
   */
 class InstructionDecoder(executeQueueWidth: Int) extends Module {
+  require(executeQueueWidth > 0, "Execute queue depth must be greater than 0")
   val io = IO(new Bundle {
     val in = Flipped(DecoupledIO(Vec(2, new DecodeStageEntry())))
     // Mapping interface

@@ -11,12 +11,48 @@ import lltriscv.core.decode._
 import lltriscv.core.record._
 import lltriscv.core.execute._
 import lltriscv.core.broadcast.DataBroadcastIO
-import lltriscv.core.broadcast.PriorityBroadcaster
 import lltriscv.core.decode.InstructionDecoder
 import lltriscv.core.broadcast.RoundRobinBroadcaster
 import lltriscv.core.retire.InstructionRetire
 import lltriscv.core.fetch.PCVerifyStage
 import lltriscv.core.fetch.PCVerifyStageEntry
+import java.io.File
+import java.io.FileInputStream
+
+class MemoryMock(len: Int) {
+  private val memory = Array.ofDim[Byte](len)
+
+  def toBinaryString(x: Int, width: Int) =
+    String
+      .format("%" + width + "s", Integer.toBinaryString(x))
+      .replace(' ', '0')
+
+  def importBin(file: File, start: Int) = {
+    val in = new FileInputStream(file)
+    var by = in.read()
+    var id = 0
+    while (by != -1) {
+      memory(start + id) = by.toByte
+      by = in.read()
+      id = id + 1
+    }
+    in.close()
+    println(s"Import from ${file.getName()} ${id} bytes.")
+  }
+
+  def readInt(start: Int) = {
+    if (start + 3 < memory.length) {
+      val a = memory(start).toInt & 0xff
+      val b = memory(start + 1).toInt & 0xff
+      val c = memory(start + 2).toInt & 0xff
+      val d = memory(start + 3).toInt & 0xff
+      val result = (d << 24) | (c << 16) | (b << 8) | a
+      s"b${toBinaryString(result, 32)}".U
+    } else {
+      0.U
+    }
+  }
+}
 
 class CoreTest extends Module {
   val io = IO(new Bundle {
@@ -100,43 +136,16 @@ class RegisterMappingTableTest extends AnyFreeSpec with ChiselScalatestTester {
     test(new CoreTest()).withAnnotations(
       Seq(WriteVcdAnnotation, VerilatorBackendAnnotation)
     ) { dut =>
-      val memory = Array.ofDim[UInt](64)
+      val memory = new MemoryMock(64)
+      memory.importBin(new File("test.bin"), 0)
 
-      def toBinaryString(x: Int, width: Int) =
-        String
-          .format("%" + width + "s", Integer.toBinaryString(x))
-          .replace(' ', '0')
-
-      def add(rs1: Int, rs2: Int, rd: Int) =
-        s"b0000000_${toBinaryString(rs2, 5)}_${toBinaryString(rs1, 5)}_000_${toBinaryString(rd, 5)}_0110011".U
-
-      def addi(rs1: Int, imm: Int, rd: Int) =
-        s"b${toBinaryString(imm, 12)}_${toBinaryString(rs1, 5)}_000_${toBinaryString(rd, 5)}_0010011".U
-
-      def bne(rs1: Int, rs2: Int) =
-        s"b0000000_${toBinaryString(rs2, 5)}_${toBinaryString(rs1, 5)}_001_01000_1100011".U
-
-      for (i <- 0 until memory.length) memory(i) = 0.U(32.W)
-      memory(0) = addi(0, 1, 1)
-      memory(1) = add(1, 1, 1)
-      memory(2) = bne(0, 1)
-      memory(3) = add(1, 1, 1) // skip
-      memory(4) = addi(1, 5, 1)
-
-      def get_mem(x: Int) = {
-        if (x < memory.length) {
-          memory(x)
-        } else {
-          0.U(32.W)
-        }
-      }
-
-      for (j <- 0 to 100) {
+      for (j <- 0 to 200) {
         for (i <- 0 until 2) {
           dut.io.in
             .bits(i)
             .instruction
-            .poke(get_mem((dut.io.pc.peekInt() / 4 + i).toInt))
+            .poke(memory.readInt((dut.io.pc.peekInt().toInt + 4 * i)))
+
           dut.io.in
             .bits(i)
             .pc
