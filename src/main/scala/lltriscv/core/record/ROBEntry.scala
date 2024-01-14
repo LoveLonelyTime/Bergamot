@@ -19,9 +19,9 @@ class ROBTableEntry extends Bundle {
   // Common instruction execution result
   val result = DataType.operation
   val rd = DataType.register // Target rd
-  val spec = DataType.pc // Speculative PC
-  val real = DataType.pc // Real PC
-  val pc = DataType.pc // Blamed PC
+  val spec = DataType.address // Speculative PC
+  val real = DataType.address // Real PC
+  val pc = DataType.address // Blamed PC
   val commit = Bool() // Has been committed?
   val valid = Bool() // Validity
 }
@@ -36,9 +36,9 @@ class ROBTableWriteIO extends Bundle {
       2,
       new Bundle {
         val id = DataType.receipt
-        val pc = DataType.pc
+        val pc = DataType.address
         val rd = DataType.register
-        val spec = DataType.pc
+        val spec = DataType.address
         val valid = Bool()
       }
     )
@@ -57,7 +57,7 @@ class ROBTableCommitIO extends Bundle {
       new Bundle {
         val id = DataType.receipt
         val result = DataType.operation
-        val real = DataType.pc
+        val real = DataType.address
         val valid = Bool()
       }
     )

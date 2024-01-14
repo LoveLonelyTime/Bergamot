@@ -44,7 +44,7 @@ class BranchExecuteStageEntry extends Bundle {
   val add1 = DataType.operation // Address addend 1
   val add2 = DataType.operation // Address addend 2
   val rd = DataType.receipt // Destination receipt
-  val pc = DataType.pc // Corresponding PC
-  val next = DataType.pc // Next PC
+  val pc = DataType.address // Corresponding PC
+  val next = DataType.address // Next PC
   val valid = Bool() // Validity
 }

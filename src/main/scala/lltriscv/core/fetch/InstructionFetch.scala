@@ -23,14 +23,14 @@ class PCVerifyStage extends Module {
     val in = Flipped(DecoupledIO(Vec(2, new PCVerifyStageEntry())))
     val out = DecoupledIO(Vec(2, new DecodeStageEntry()))
     // Current PC
-    val pc = Output(DataType.pc)
+    val pc = Output(DataType.address)
     // Prediction failure and correction PC
-    val correctPC = Input(DataType.pc)
+    val correctPC = Input(DataType.address)
     // Recovery interface
     val recover = Input(Bool())
   })
   // PC register
-  private val pcReg = Reg(DataType.pc)
+  private val pcReg = Reg(DataType.address)
   io.pc := pcReg
 
   // Pipeline logic

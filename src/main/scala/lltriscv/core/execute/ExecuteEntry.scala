@@ -19,15 +19,14 @@ import lltriscv.core.broadcast.DataBroadcastSlotEntry
 class ExecuteEntry extends Bundle {
   val opcode = DataType.opcode // opcode
   val instructionType = InstructionType() // Instruction Type
-  val executeQueue = ExecuteQueueType() // Execute queue
   val rs1 = new DataBroadcastSlotEntry() // rs1
   val rs2 = new DataBroadcastSlotEntry() // rs2
   val rd = DataType.receipt // rd
   val func3 = DataType.func3 // func3
   val func7 = DataType.func7 // func7
   val imm = DataType.immediate // Immediate
-  val pc = DataType.pc // Corresponding PC
-  val next = DataType.pc // Next PC
+  val pc = DataType.address // Corresponding PC
+  val next = DataType.address // Next PC
   val valid = Bool() // Validity
 }
 
@@ -39,9 +38,9 @@ class ExecuteResultEntry extends Bundle {
   val result =
     DataType.operation // General execution result, writeback to rd
   val rd = DataType.receipt // Destination receipt
-  val pc = DataType.pc // Corresponding PC
-  val next = DataType.pc // Next PC
-  val real = DataType.pc // Real PC
+  val pc = DataType.address // Corresponding PC
+  val next = DataType.address // Next PC
+  val real = DataType.address // Real PC
   val valid = Bool() // Validity
 }
 

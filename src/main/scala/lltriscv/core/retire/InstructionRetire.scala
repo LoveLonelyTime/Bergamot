@@ -33,7 +33,7 @@ class InstructionRetire(depth: Int) extends Module {
     val update = new RegisterUpdateIO()
     // Recovery interface
     val recover = Output(new Bool())
-    val correctPC = Output(DataType.pc)
+    val correctPC = Output(DataType.address)
   })
 
   private val id1 = io.retired.bits(30, 0) ## 0.U

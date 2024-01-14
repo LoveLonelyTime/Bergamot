@@ -11,7 +11,7 @@ import chisel3._
 /** Basic data type.
   */
 object DataType {
-  def pc = UInt(32.W) // 32-bits instruction address
+  def address = UInt(32.W) // 32-bits address
   def opcode = UInt(7.W) // 7-bits opcode
   def instruction = UInt(32.W) // 32-bits instruction
   def register = UInt(5.W) // 5-bits register id
@@ -20,4 +20,5 @@ object DataType {
   def immediate = UInt(32.W) // 32-bits raw immediate
   def receipt = UInt(32.W) // 32-bits broadcast receipt
   def operation = UInt(32.W) // 32-bits operand
+  def csr = UInt(12.W) // 12-bits CSR address
 }

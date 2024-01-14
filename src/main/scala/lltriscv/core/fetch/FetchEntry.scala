@@ -17,8 +17,8 @@ import lltriscv.core.decode.DecodeStageEntry
   */
 class PCVerifyStageEntry extends Bundle {
   val instruction = DataType.instruction // Instruction
-  val pc = DataType.pc // Corresponding PC
-  val spec = DataType.pc // Speculative PC
-  val next = DataType.pc // Next PC
+  val pc = DataType.address // Corresponding PC
+  val spec = DataType.address // Speculative PC
+  val next = DataType.address // Next PC
   val valid = Bool() // Validity
 }

@@ -35,9 +35,9 @@ object InstructionType extends ChiselEnum {
 class DecodeStageEntry extends Bundle {
   val instruction =
     DataType.instruction // 32-bits raw instruction
-  val pc = DataType.pc // Corresponding PC
-  val spec = DataType.pc // Speculative PC
-  val next = DataType.pc // Next PC
+  val pc = DataType.address // Corresponding PC
+  val spec = DataType.address // Speculative PC
+  val next = DataType.address // Next PC
   val valid = Bool() // Validity
 }
 
@@ -55,9 +55,9 @@ class RegisterMappingStageEntry extends Bundle {
   val func3 = DataType.func3 // func3
   val func7 = DataType.func7 // func7
   val imm = DataType.immediate // Immediate
-  val pc = DataType.pc // Corresponding PC
-  val spec = DataType.pc // Speculative PC
-  val next = DataType.pc // Next PC
+  val pc = DataType.address // Corresponding PC
+  val spec = DataType.address // Speculative PC
+  val next = DataType.address // Next PC
   val valid = Bool() // Validity
 }
 
@@ -75,7 +75,7 @@ class IssueStageEntry extends Bundle {
   val func3 = DataType.func3 // func3
   val func7 = DataType.func7 // func7
   val imm = DataType.immediate // Immediate
-  val pc = DataType.pc // Corresponding PC
-  val next = DataType.pc // Next PC
+  val pc = DataType.address // Corresponding PC
+  val next = DataType.address // Next PC
   val valid = Bool() // Validity
 }

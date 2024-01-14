@@ -49,7 +49,7 @@ class ALUExecuteStageEntry extends Bundle {
   val op1 = DataType.operation // Operand 1
   val op2 = DataType.operation // Operand 2
   val rd = DataType.receipt // Destination receipt
-  val pc = DataType.pc // Corresponding PC
-  val next = DataType.pc // Next PC
+  val pc = DataType.address // Corresponding PC
+  val next = DataType.address // Next PC
   val valid = Bool() // Validity
 }

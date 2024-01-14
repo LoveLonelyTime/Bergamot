@@ -57,7 +57,7 @@ class MemoryMock(len: Int) {
 class CoreTest extends Module {
   val io = IO(new Bundle {
     val in = Flipped(DecoupledIO(Vec(2, new PCVerifyStageEntry())))
-    val pc = Output(DataType.pc)
+    val pc = Output(DataType.address)
   })
   private val fetcher = Module(new PCVerifyStage())
   private val registerMappingTable = Module(new RegisterMappingTable())

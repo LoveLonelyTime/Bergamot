@@ -425,7 +425,6 @@ class IssueStage(executeQueueWidth: Int) extends Module {
     when(grants(i)(j)) {
       io.enqs(j).enq.bits.opcode := inReg(i).opcode
       io.enqs(j).enq.bits.instructionType := inReg(i).instructionType
-      io.enqs(j).enq.bits.executeQueue := inReg(i).executeQueue
 
       // Broadcast bypass
       // rs1
