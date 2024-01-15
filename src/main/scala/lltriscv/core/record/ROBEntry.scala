@@ -4,6 +4,8 @@ import chisel3._
 import chisel3.util._
 
 import lltriscv.core._
+import lltriscv.core.execute.MemoryWriteType
+import lltriscv.core.execute.ExecuteResultEntry
 
 /*
  * ROB entry
@@ -16,11 +18,10 @@ import lltriscv.core._
   * A ROB table entry
   */
 class ROBTableEntry extends Bundle {
-  // Common instruction execution result
-  val result = DataType.operation
+  val executeResult = new ExecuteResultEntry()
+
   val rd = DataType.register // Target rd
   val spec = DataType.address // Speculative PC
-  val real = DataType.address // Real PC
   val pc = DataType.address // Blamed PC
   val commit = Bool() // Has been committed?
   val valid = Bool() // Validity
@@ -51,18 +52,7 @@ class ROBTableWriteIO extends Bundle {
   * ROB commit interface
   */
 class ROBTableCommitIO extends Bundle {
-  val entries = Output(
-    Vec(
-      2,
-      new Bundle {
-        val id = DataType.receipt
-        val result = DataType.operation
-        val real = DataType.address
-        val valid = Bool()
-      }
-    )
-  ) // Committing entries
-  val wen = Output(Bool()) // Write enable flag
+  val entries = Output(Vec(2, new ExecuteResultEntry())) // Committing entries
 }
 
 /** ROB table retire interface

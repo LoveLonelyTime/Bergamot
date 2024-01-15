@@ -190,6 +190,13 @@ class BranchExecuteStage extends Module {
 
   io.out.bits.result := inReg.next // Save next PC
 
+  // Exception
+  io.out.bits.noException()
+  // Memory
+  io.out.bits.noMemory()
+  // CSR
+  io.out.bits.noCSR()
+
   // rd & pc & valid
   io.out.bits.rd := inReg.rd
   io.out.bits.pc := inReg.pc

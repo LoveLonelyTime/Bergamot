@@ -32,6 +32,18 @@ class DataBroadcastEntry extends Bundle {
   val receipt = DataType.receipt
   // Data
   val data = DataType.operation
+
+  def castBroadcast(receipt: UInt, data: UInt) = {
+    valid := true.B
+    this.receipt := receipt
+    this.data := data
+  }
+
+  def noBroadcast() = {
+    valid := false.B
+    this.receipt := 0.U
+    this.data := 0.U
+  }
 }
 
 /** Data broadcast interface

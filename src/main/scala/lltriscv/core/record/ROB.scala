@@ -59,17 +59,10 @@ class ROB(depth: Int) extends Module {
   }
 
   // Table commit logic
-  when(io.tableCommit.wen) {
-    for (i <- 0 until 2) {
-      when(io.tableCommit.entries(i).valid) {
-        table(io.tableCommit.entries(i).id).result := io.tableCommit
-          .entries(i)
-          .result
-        table(io.tableCommit.entries(i).id).real := io.tableCommit
-          .entries(i)
-          .real
-        table(io.tableCommit.entries(i).id).commit := true.B
-      }
+  for (i <- 0 until 2) {
+    when(io.tableCommit.entries(i).valid) {
+      table(io.tableCommit.entries(i).rd).executeResult := io.tableCommit
+        .entries(i)
     }
   }
 

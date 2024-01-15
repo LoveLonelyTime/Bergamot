@@ -20,16 +20,18 @@ import lltriscv.core.decode.InstructionType
   *
   * TODO: Currently, only RV32I is supported
   *
-  * (lui, auipc, add(i), sub, sll(i), slt(i), sltu(i), xor(i), srl(i), sra(i),
-  * or(i), and(i))
+  * (lui, auipc, add(i), sub, sll(i), slt(i), sltu(i), xor(i), srl(i), sra(i), or(i), and(i), csrrw(i), csrrs(i), csrrc(i))
   */
 class ALU extends Module {
   val io = IO(new Bundle {
     // Pipeline interface
     val in = Flipped(DecoupledIO(new ExecuteEntry()))
     val out = DecoupledIO(new ExecuteResultEntry())
-
-    // Recovery logic
+    // CSR read interface
+    val csr = Flipped(new CSRsReadIO())
+    // Current core privilege
+    val privilege = Input(PrivilegeType())
+    // Recovery interface
     val recover = Input(Bool())
   })
   private val aluDecodeStage = Module(new ALUDecodeStage())
@@ -39,15 +41,18 @@ class ALU extends Module {
   aluDecodeStage.io.out <> aluExecuteStage.io.in
   aluExecuteStage.io.out <> io.out
 
-  // Recovery logic
+  // Recovery interface
   aluDecodeStage.io.recover := io.recover
   aluExecuteStage.io.recover := io.recover
+
+  // Privilege interface
+  aluDecodeStage.io.csr <> io.csr
+  aluDecodeStage.io.privilege := io.privilege
 }
 
 /** ALU decode stage
   *
-  * Secondary decoding of instructions: extract information (op1, op2, op),
-  * extend immediate
+  * Secondary decoding of instructions: extract information (op1, op2, op), extend immediate, CSR read
   *
   * Single cycle stage
   */
@@ -56,8 +61,11 @@ class ALUDecodeStage extends Module {
     // Pipeline interface
     val in = Flipped(DecoupledIO(new ExecuteEntry()))
     val out = DecoupledIO(new ALUExecuteStageEntry())
-
-    // Recovery logic
+    // CSR read interface
+    val csr = Flipped(new CSRsReadIO())
+    // Current core privilege
+    val privilege = Input(PrivilegeType())
+    // Recovery interface
     val recover = Input(Bool())
   })
   // Pipeline logic
@@ -75,64 +83,112 @@ class ALUDecodeStage extends Module {
   // Decode logic
   // op
   io.out.bits.op := ALUOperationType.undefined
-  switch(inReg.func3) {
-    is("b100".U) {
-      io.out.bits.op := ALUOperationType.xor
-    }
-    is("b110".U) {
-      io.out.bits.op := ALUOperationType.or
-    }
-    is("b111".U) {
-      io.out.bits.op := ALUOperationType.and
-    }
-    is("b001".U) {
-      io.out.bits.op := ALUOperationType.sll
-    }
-    is("b010".U) {
-      io.out.bits.op := ALUOperationType.slt
-    }
-    is("b011".U) {
-      io.out.bits.op := ALUOperationType.sltu
-    }
+  when(inReg.opcode(6, 2) === "b00100".U || inReg.opcode(6, 2) === "b01100".U) { // Basic ALU instructions
+    switch(inReg.func3) {
+      is("b100".U) {
+        io.out.bits.op := ALUOperationType.xor
+      }
+      is("b110".U) {
+        io.out.bits.op := ALUOperationType.or
+      }
+      is("b111".U) {
+        io.out.bits.op := ALUOperationType.and
+      }
+      is("b001".U) {
+        io.out.bits.op := ALUOperationType.sll
+      }
+      is("b010".U) {
+        io.out.bits.op := ALUOperationType.slt
+      }
+      is("b011".U) {
+        io.out.bits.op := ALUOperationType.sltu
+      }
 
-    is("b000".U) {
-      // add / sub / addi
-      when(inReg.instructionType === InstructionType.R) {
+      is("b000".U) {
+        // add / sub / addi
+        when(inReg.instructionType === InstructionType.R) {
+          io.out.bits.op := Mux(
+            inReg.func7(5) === 0.U,
+            ALUOperationType.add,
+            ALUOperationType.sub
+          )
+        }.elsewhen(inReg.instructionType === InstructionType.I) {
+          io.out.bits.op := ALUOperationType.add
+        }
+      }
+
+      is("b101".U) {
+        // slr / sra
         io.out.bits.op := Mux(
           inReg.func7(5) === 0.U,
-          ALUOperationType.add,
-          ALUOperationType.sub
+          ALUOperationType.srl,
+          ALUOperationType.sra
         )
-      }.elsewhen(inReg.instructionType === InstructionType.I) {
-        io.out.bits.op := ALUOperationType.add
       }
     }
-
-    is("b101".U) {
-      // slr / sra
-      io.out.bits.op := Mux(
-        inReg.func7(5) === 0.U,
-        ALUOperationType.srl,
-        ALUOperationType.sra
-      )
+  }.elsewhen(inReg.opcode(6, 2) === "b01101".U || inReg.opcode(6, 2) === "b00101".U) { // lui / auipc
+    io.out.bits.op := ALUOperationType.add
+  }.elsewhen(inReg.opcode(6, 2) === "b11100".U) { // CSR
+    switch(inReg.func3) {
+      is("b001".U) {
+        io.out.bits.op := ALUOperationType.csrrw
+      }
+      is("b010".U) {
+        io.out.bits.op := ALUOperationType.csrrs
+      }
+      is("b011".U) {
+        io.out.bits.op := ALUOperationType.csrrc
+      }
+      is("b101".U) {
+        io.out.bits.op := ALUOperationType.csrrw
+      }
+      is("b110".U) {
+        io.out.bits.op := ALUOperationType.csrrs
+      }
+      is("b111".U) {
+        io.out.bits.op := ALUOperationType.csrrc
+      }
     }
   }
 
-  // Or U
-  when(inReg.instructionType === InstructionType.U) { // lui / auipc
-    io.out.bits.op := ALUOperationType.add
-  }
-
-  // op1 & op2
+  // op1 & op2 & csr
   io.out.bits.op1 := 0.U
   io.out.bits.op2 := 0.U
+  io.out.bits.csrAddress := 0.U
+  io.out.bits.csrError := false.B
+  io.csr.address := 0.U
   when(inReg.instructionType === InstructionType.R) { // R
     io.out.bits.op1 := inReg.rs1.receipt
     io.out.bits.op2 := inReg.rs2.receipt
   }.elsewhen(inReg.instructionType === InstructionType.I) { // I
-    io.out.bits.op1 := inReg.rs1.receipt
-    // Extend imm
-    io.out.bits.op2 := CoreUtils.signExtended(inReg.imm, 11)
+    when(inReg.opcode(6, 2) === "b11100".U) { // CSR I
+      // CSR access
+      io.out.bits.csrAddress := inReg.imm(11, 0)
+      io.csr.address := inReg.imm(11, 0)
+      when(
+        // Non-existent CSR
+        io.csr.error ||
+          // Read-only violate
+          ((io.out.bits.op1 =/= 0.U || io.out.bits.op === ALUOperationType.csrrw) && inReg.imm(11, 10) === "b11".U) ||
+          // Unauthorized access
+          (io.privilege === PrivilegeType.S && inReg.imm(9, 8) === "b11".U) || (io.privilege === PrivilegeType.U && inReg.imm(9, 8) =/= "b00".U)
+      ) {
+        io.out.bits.csrError := true.B
+      }.otherwise {
+        io.out.bits.op1 := io.csr.data
+      }
+
+      when(inReg.func3(2) === 1.U) { // csrrxi
+        io.out.bits.op2 := inReg.zimm // Zero extend imm
+      }.otherwise {
+        io.out.bits.op2 := inReg.rs1
+      }
+    }.otherwise { // General I
+      io.out.bits.op1 := inReg.rs1.receipt
+      // Extend imm
+      io.out.bits.op2 := CoreUtils.signExtended(inReg.imm, 11)
+    }
+
   }.elsewhen(inReg.instructionType === InstructionType.U) { // lui / auipc
     io.out.bits.op1 := Mux(inReg.func7(5) === 0.U, inReg.pc, 0.U)
     io.out.bits.op2 := inReg.imm // Upper
@@ -164,7 +220,7 @@ class ALUExecuteStage extends Module {
     val in = Flipped(DecoupledIO(new ALUExecuteStageEntry()))
     val out = DecoupledIO(new ExecuteResultEntry())
 
-    // Recovery logic
+    // Recovery interface
     val recover = Input(Bool())
   })
   // Pipeline logic
@@ -179,8 +235,10 @@ class ALUExecuteStage extends Module {
     inReg := io.in.bits
   }
 
-  // Execute
+  // Execute logic
+  // Result and CSR
   io.out.bits.result := 0.U
+  io.out.bits.noCSR()
   switch(inReg.op) {
     is(ALUOperationType.add) {
       io.out.bits.result := inReg.op1 + inReg.op2
@@ -212,7 +270,28 @@ class ALUExecuteStage extends Module {
     is(ALUOperationType.sltu) {
       io.out.bits.result := Mux(inReg.op1 < inReg.op2, 1.U, 0.U)
     }
+    is(ALUOperationType.csrrw) {
+      io.out.bits.result := inReg.op1
+      io.out.bits.resultCSR(inReg.csrAddress, inReg.op2)
+    }
+    is(ALUOperationType.csrrs) {
+      io.out.bits.result := inReg.op1
+      io.out.bits.resultCSR(inReg.csrAddress, inReg.op1 | inReg.op2)
+    }
+    is(ALUOperationType.csrrc) {
+      io.out.bits.result := inReg.op1
+      io.out.bits.resultCSR(inReg.csrAddress, inReg.op1 & ~inReg.op2)
+    }
   }
+
+  // Exception
+  io.out.bits.noException()
+  when(inReg.csrError) {
+    io.out.bits.triggerException(ExceptionCode.illegalInstruction)
+  }
+
+  // Memory
+  io.out.bits.noMemory()
 
   // rd & pc & valid
   io.out.bits.rd := inReg.rd
@@ -220,6 +299,7 @@ class ALUExecuteStage extends Module {
   io.out.bits.next := inReg.next
   io.out.bits.real := inReg.next
   io.out.bits.valid := inReg.valid
+
   io.out.valid := true.B // No wait
 
   // Recovery logic

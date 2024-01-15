@@ -36,8 +36,14 @@ object ALUOperationType extends ChiselEnum {
    * Compare then set operation:
    * - slt: if op1 < op1 then 1 else 0
    * - sltu: if op1 < op1 (unsigned) then 1 else 0
+   *
+   * CSR operation:
+   * - csrrw: CSR read then write
+   * - csrrs: CSR read then set
+   * - csrrc: CSR read then clear
    */
-  val none, undefined, add, sub, and, or, xor, sll, srl, sra, slt, sltu = Value
+  val none, undefined, add, sub, and, or, xor, sll, srl, sra, slt, sltu, csrrw,
+      csrrs, csrrc = Value
 }
 
 /** ALU execute stage entry
@@ -49,6 +55,8 @@ class ALUExecuteStageEntry extends Bundle {
   val op1 = DataType.operation // Operand 1
   val op2 = DataType.operation // Operand 2
   val rd = DataType.receipt // Destination receipt
+  val csrAddress = DataType.csr // CSR Address
+  val csrError = Bool() // CSR Error
   val pc = DataType.address // Corresponding PC
   val next = DataType.address // Next PC
   val valid = Bool() // Validity

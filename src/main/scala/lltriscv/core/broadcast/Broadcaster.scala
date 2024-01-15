@@ -62,38 +62,23 @@ class RoundRobinBroadcaster(executeQueueWidth: Int)
   def commit(queuePtr: UInt, entryPtr: Int) = {
     when(io.queues(queuePtr).valid) {
       io.queues(queuePtr).ready := true.B
+      io.tableCommit.entries(entryPtr) <> io.queues(queuePtr).bits
       when(io.queues(queuePtr).bits.valid) {
-        io.broadcast.entries(entryPtr).valid := true.B
-        io.broadcast.entries(entryPtr).receipt := io.queues(queuePtr).bits.rd
-        io.broadcast.entries(entryPtr).data := io.queues(queuePtr).bits.result
-
-        io.tableCommit.entries(entryPtr).valid := true.B
-        io.tableCommit.entries(entryPtr).id := io.queues(queuePtr).bits.rd
-        io.tableCommit
-          .entries(entryPtr)
-          .result := io.queues(queuePtr).bits.result
-        io.tableCommit
-          .entries(entryPtr)
-          .real := io.queues(queuePtr).bits.real
+        io.broadcast
+          .entries(queuePtr)
+          .castBroadcast(
+            io.queues(queuePtr).bits.rd,
+            io.queues(queuePtr).bits.result
+          )
       }
     }
   }
 
   // Commit logic
   io.queues.foreach(_.ready := false.B)
-  io.broadcast.entries.foreach(item => {
-    item.data := 0.U
-    item.receipt := 0.U
-    item.valid := false.B
-  })
-  io.tableCommit.entries.foreach(item => {
-    item.id := 0.U
-    item.result := 0.U
-    item.real := 0.U
-    item.valid := false.B
-  })
+  io.broadcast.entries.foreach(_.noBroadcast())
+  io.tableCommit.entries.foreach(_.noResult())
 
-  io.tableCommit.wen := true.B // ? Verbose
   commit(pointer, 0)
   commit(nextVal, 1)
 }

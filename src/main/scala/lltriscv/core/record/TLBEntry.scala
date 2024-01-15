@@ -7,17 +7,37 @@ import lltriscv.core.DataType
 class TLBEntry extends Bundle {
   val vpn = UInt(20.W)
   val ppn = UInt(22.W)
-  val r = Bool()
-  val w = Bool()
-  val x = Bool()
-  val u = Bool()
-  val g = Bool()
+  val uxwr = UInt(4.W)
   val mPage = Bool()
-  val error = Bool()
   val valid = Bool()
+}
+
+object TLBErrorCode extends ChiselEnum {
+  /*
+   * success: Translation successful
+   * accessFault: Access denied
+   * pageFault: Invalid page table
+   */
+  val success, pageFault, accessFault = Value
+}
+
+object PTERWX {
+  val next = "b000".U
+  val r = "b001".U
+  val reservedW = "b010".U
+  val rw = "b011".U
+  val x = "b100".U
+  val rx = "b101".U
+  val reservedWX = "b110".U
+  val rwx = "b111".U
+}
+
+class TLBVAddressEntry extends Bundle {
+  val address = DataType.address
+  val write = Bool()
 }
 
 class TLBPAddressEntry extends Bundle {
   val address = DataType.address
-  val error = Bool()
+  val error = TLBErrorCode()
 }

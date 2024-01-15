@@ -17,14 +17,14 @@ import lltriscv.core.broadcast.DataBroadcastIO
 
 /** Instruction decoder
   *
-  * The instruction decoding stage is divided into three cycles: DecodeStage ->
-  * RegisterMappingStage -> IssueStage
+  * The instruction decoding stage is divided into three cycles: DecodeStage -> RegisterMappingStage -> IssueStage
   *
   * @param executeQueueWidth
   *   Execute queue width
   */
 class InstructionDecoder(executeQueueWidth: Int) extends Module {
   require(executeQueueWidth > 0, "Execute queue depth must be greater than 0")
+
   val io = IO(new Bundle {
     val in = Flipped(DecoupledIO(Vec(2, new DecodeStageEntry())))
     // Mapping interface
@@ -130,8 +130,15 @@ class DecodeStage extends Module {
       is("b11001".U) {
         instructionType := InstructionType.I
       }
+      // I: csrrw, csrrs, csrrc, csrrwi, csrrsi, csrrci
+      is("b11100".U) {
+        instructionType := InstructionType.I
+      }
     }
     io.out.bits(i).instructionType := instructionType
+
+    // rs1Tozimm
+    val rs1Tozimm = inReg(i).instruction(6, 2) === "b11100".U && inReg(i).instruction(14) === 1.U
 
     // rd: R/I/U/J
     when(
@@ -142,12 +149,19 @@ class DecodeStage extends Module {
       io.out.bits(i).rd := 0.U
     }
 
-    // rs1: R/I/S/B
+    // rs1(zimm): R/I/S/B
     when(
       instructionType === InstructionType.R || instructionType === InstructionType.I || instructionType === InstructionType.S || instructionType === InstructionType.B
     ) {
-      io.out.bits(i).rs1 := inReg(i).instruction(19, 15)
+      when(rs1Tozimm) {
+        io.out.bits(i).zimm := inReg(i).instruction(19, 15)
+        io.out.bits(i).rs1 := 0.U
+      }.otherwise {
+        io.out.bits(i).zimm := 0.U
+        io.out.bits(i).rs1 := inReg(i).instruction(19, 15)
+      }
     }.otherwise {
+      io.out.bits(i).zimm := 0.U
       io.out.bits(i).rs1 := 0.U
     }
 
@@ -311,6 +325,7 @@ class RegisterMappingStage extends Module {
     io.out.bits(i).func3 := inReg(i).func3
     io.out.bits(i).func7 := inReg(i).func7
     io.out.bits(i).imm := inReg(i).imm
+    io.out.bits(i).zimm := inReg(i).zimm
 
     io.out.bits(i).pc := inReg(i).pc
     io.out.bits(i).next := inReg(i).next
@@ -340,10 +355,7 @@ class RegisterMappingStage extends Module {
   *
   * Instruction queue arbitration
   *
-  * Select executable instructions to the instruction queue. When the execution
-  * queue types of two instructions are different, two instructions can be
-  * issued at once. If two instructions are the same type, will be issued in two
-  * cycles.
+  * Select executable instructions to the instruction queue. When the execution queue types of two instructions are different, two instructions can be issued at once. If two instructions are the same type, will be issued in two cycles.
   *
   * Multicycle stage
   *
@@ -444,6 +456,7 @@ class IssueStage(executeQueueWidth: Int) extends Module {
       io.enqs(j).enq.bits.func3 := inReg(i).func3
       io.enqs(j).enq.bits.func7 := inReg(i).func7
       io.enqs(j).enq.bits.imm := inReg(i).imm
+      io.enqs(j).enq.bits.zimm := inReg(i).zimm
       io.enqs(j).enq.bits.pc := inReg(i).pc
       io.enqs(j).enq.bits.next := inReg(i).next
       io.enqs(j).enq.bits.valid := inReg(i).valid

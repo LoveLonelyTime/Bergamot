@@ -19,3 +19,13 @@ class SMAReaderIO extends Bundle {
   val ready = Input(Bool())
   val error = Input(Bool())
 }
+
+class SMAReaderWriterIO extends Bundle {
+  val address = Output(UInt(SMASpec.addressWidth.W))
+  val wen = Output(Bool())
+  val wdata = Output(UInt(SMASpec.dataWidth.W))
+  val rdata = Input(UInt(SMASpec.dataWidth.W))
+  val valid = Output(Bool())
+  val ready = Input(Bool())
+  val error = Input(Bool())
+}
