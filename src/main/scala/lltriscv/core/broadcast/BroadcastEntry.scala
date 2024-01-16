@@ -33,6 +33,7 @@ class DataBroadcastEntry extends Bundle {
   // Data
   val data = DataType.operation
 
+  // Helper functions
   def castBroadcast(receipt: UInt, data: UInt) = {
     valid := true.B
     this.receipt := receipt

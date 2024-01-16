@@ -41,9 +41,12 @@ object ALUOperationType extends ChiselEnum {
    * - csrrw: CSR read then write
    * - csrrs: CSR read then set
    * - csrrc: CSR read then clear
+   *
+   * Privilege switch operation:
+   * - env: Trigger environment call trap (exception)
+   * - xret: Environment call return
    */
-  val none, undefined, add, sub, and, or, xor, sll, srl, sra, slt, sltu, csrrw,
-      csrrs, csrrc = Value
+  val none, undefined, add, sub, and, or, xor, sll, srl, sra, slt, sltu, csrrw, csrrs, csrrc, env, xret = Value
 }
 
 /** ALU execute stage entry

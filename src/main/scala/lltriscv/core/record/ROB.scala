@@ -24,6 +24,7 @@ import lltriscv.utils.CoreUtils
   */
 class ROB(depth: Int) extends Module {
   require(depth > 0, "ROB table depth must be greater than 0")
+
   val io = IO(new Bundle {
     // Retire interface
     val retired = DecoupledIO(DataType.receipt)
@@ -63,6 +64,7 @@ class ROB(depth: Int) extends Module {
     when(io.tableCommit.entries(i).valid) {
       table(io.tableCommit.entries(i).rd).executeResult := io.tableCommit
         .entries(i)
+      table(io.tableCommit.entries(i).rd).commit := true.B
     }
   }
 

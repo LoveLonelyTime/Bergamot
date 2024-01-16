@@ -130,7 +130,7 @@ class DecodeStage extends Module {
       is("b11001".U) {
         instructionType := InstructionType.I
       }
-      // I: csrrw, csrrs, csrrc, csrrwi, csrrsi, csrrci
+      // I: csrrw, csrrs, csrrc, csrrwi, csrrsi, csrrci, ecall, ebreak, mret, sret
       is("b11100".U) {
         instructionType := InstructionType.I
       }
@@ -216,8 +216,8 @@ class DecodeStage extends Module {
           0.U(12.W)
       }
       is(InstructionType.J) {
-        io.out.bits(i).imm := 0.U(11.W)
-        inReg(i).instruction(31) ##
+        io.out.bits(i).imm := 0.U(11.W) ##
+          inReg(i).instruction(31) ##
           inReg(i).instruction(19, 12) ##
           inReg(i).instruction(20) ##
           inReg(i).instruction(30, 21) ##

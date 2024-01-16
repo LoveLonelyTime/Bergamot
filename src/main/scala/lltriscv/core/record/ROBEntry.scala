@@ -18,8 +18,7 @@ import lltriscv.core.execute.ExecuteResultEntry
   * A ROB table entry
   */
 class ROBTableEntry extends Bundle {
-  val executeResult = new ExecuteResultEntry()
-
+  val executeResult = new ExecuteResultEntry() // Execute result
   val rd = DataType.register // Target rd
   val spec = DataType.address // Speculative PC
   val pc = DataType.address // Blamed PC

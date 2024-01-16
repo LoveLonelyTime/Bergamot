@@ -83,6 +83,9 @@ class ExecuteResultEntry extends Bundle {
   val csrAddress = DataType.csr
   val csrData = DataType.operation
 
+  // XReturn field
+  val xret = Bool()
+
   val rd = DataType.receipt // Destination receipt
   val pc = DataType.address // Corresponding PC
   val next = DataType.address // Next PC
@@ -131,6 +134,7 @@ class ExecuteResultEntry extends Bundle {
     noException()
     noCSR()
     noMemory()
+    xret := false.B
     rd := 0.U
     pc := 0.U
     next := 0.U

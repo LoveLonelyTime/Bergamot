@@ -22,5 +22,5 @@ object DataType {
   def receipt = UInt(32.W) // 32-bits broadcast receipt
   def operation = UInt(32.W) // 32-bits operand
   def csr = UInt(12.W) // 12-bits CSR address
-  def exceptionCode = UInt(8.W) // 8-bits exception code
+  def exceptionCode = UInt(5.W) // 4-bits exception code
 }

@@ -18,10 +18,7 @@ import lltriscv.utils.CoreUtils
 
 /** Abstract broadcaster
   *
-  * A broadcaster selects instructions waiting to be committed from all
-  * execution queues through arbitration algorithm. The result of these
-  * instructions will be broadcasted through data broadcasting and written back
-  * to ROB.
+  * A broadcaster selects instructions waiting to be committed from all execution queues through arbitration algorithm. The result of these instructions will be broadcasted through data broadcasting and written back to ROB.
   *
   * @param executeQueueWidth
   *   Execute queue width
@@ -46,8 +43,7 @@ abstract class Broadcaster(executeQueueWidth: Int) extends Module {
   * @param executeQueueWidth
   *   Execute queue width
   */
-class RoundRobinBroadcaster(executeQueueWidth: Int)
-    extends Broadcaster(executeQueueWidth) {
+class RoundRobinBroadcaster(executeQueueWidth: Int) extends Broadcaster(executeQueueWidth) {
   // Single cycle auto increasing loop pointer
   private val (pointer, nextVal) = CoreUtils.pointer(executeQueueWidth, true.B)
 
@@ -65,7 +61,7 @@ class RoundRobinBroadcaster(executeQueueWidth: Int)
       io.tableCommit.entries(entryPtr) <> io.queues(queuePtr).bits
       when(io.queues(queuePtr).bits.valid) {
         io.broadcast
-          .entries(queuePtr)
+          .entries(entryPtr)
           .castBroadcast(
             io.queues(queuePtr).bits.rd,
             io.queues(queuePtr).bits.result

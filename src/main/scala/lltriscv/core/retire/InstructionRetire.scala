@@ -5,6 +5,8 @@ import chisel3.util._
 import lltriscv.core._
 import lltriscv.core.record.ROBTableRetireIO
 import lltriscv.core.record.RegisterUpdateIO
+import lltriscv.core.record.CSRsWriteIO
+import lltriscv.core.record.ExceptionRequestIO
 
 /*
  * Instruction retire
@@ -34,6 +36,10 @@ class InstructionRetire(depth: Int) extends Module {
     // Recovery interface
     val recover = Output(new Bool())
     val correctPC = Output(DataType.address)
+    // CSR write interface
+    val csr = new CSRsWriteIO()
+    // Exception interface
+    val exception = new ExceptionRequestIO()
   })
 
   private val retireEntries =
@@ -55,88 +61,112 @@ class InstructionRetire(depth: Int) extends Module {
     item.rd := 0.U
     item.result := 0.U
   })
+  io.csr.wen := false.B
+  io.csr.address := 0.U
+  io.csr.data := 0.U
 
-  def gotoExceptionHandler() = {}
-  def gotoRecoveryPath(pc: UInt) = {
+  io.exception.xret := false.B
+  io.exception.trigger := false.B
+  io.exception.exceptionPC := 0.U
+  io.exception.exceptionVal := 0.U
+  io.exception.exceptionCode := 0.U
+
+  def gotoExceptionHandler(id: Int) = {
     io.recover := true.B
-    io.correctPC := pc
+
+    io.exception.trigger := true.B
+    io.exception.exceptionPC := retireEntries(id).pc
+    io.exception.exceptionVal := 0.U
+    io.exception.exceptionCode := retireEntries(id).executeResult.exceptionCode
+    io.correctPC := io.exception.handlerPC
+    printf("Exception!!!! pc = %d\n", retireEntries(id).pc)
+  }
+
+  def gotoRecoveryPath(id: Int) = {
+    io.recover := true.B
+    io.correctPC := retireEntries(id).executeResult.real
+    printf(
+      "spec violate!!!: pc = %d, sepc = %d, real = %d\n",
+      retireEntries(id).pc,
+      retireEntries(id).spec,
+      retireEntries(id).executeResult.real
+    )
+  }
+
+  def gotoXRetPath(id: Int) = {
+    io.exception.xret := true.B
+    io.recover := true.B
+    io.correctPC := io.exception.handlerPC
+
+    printf(
+      "xret !!!: pc = %d\n",
+      retireEntries(id).pc
+    )
+  }
+
+  def gotoCSRPath(id: Int) = {
+    io.recover := true.B
+    io.correctPC := retireEntries(id).executeResult.real
   }
 
   def hasException(id: Int) = retireEntries(id).valid && retireEntries(id).executeResult.exception
-  def needsRecovery(id: Int) = retireEntries(id).valid &&
-    (retireEntries(id).executeResult.real =/= retireEntries(id).spec || // Branch recovery
-      retireEntries(id).executeResult.writeCSR) // CSR recovery
+  def hasBranch(id: Int) = retireEntries(id).valid && retireEntries(id).executeResult.real =/= retireEntries(id).spec
+
+  def hasCSR(id: Int) = retireEntries(id).valid && retireEntries(id).executeResult.writeCSR
+  def hasXRet(id: Int) = retireEntries(id).valid && retireEntries(id).executeResult.xret
 
   def updateRegister(id: Int) = {
     io.update.entries(id).rd := retireEntries(id).rd
     io.update.entries(id).result := retireEntries(id).executeResult.result
+
+    printf(
+      "retired instruction: pc = %d , r = %d, v = %d\n",
+      retireEntries(id).pc,
+      retireEntries(id).executeResult.result,
+      retireEntries(id).valid
+    )
+  }
+
+  def writeCSRs(id: Int) = {
+    io.csr.wen := true.B
+    io.csr.address := retireEntries(id).executeResult.csrAddress
+    io.csr.data := retireEntries(id).executeResult.csrData
   }
 
   io.retired.ready := false.B
   when(io.retired.valid && retireValid(0) && retireValid(1)) {
     io.retired.ready := true.B
 
-    when(hasException(0)) {
-      gotoExceptionHandler()
-    }.elsewhen(needsRecovery(0)) {
-      gotoRecoveryPath(retireEntries(0).spec)
-    }.elsewhen(hasException(1)) {
-      gotoExceptionHandler()
+    when(hasException(0)) { // Exception ?
+      gotoExceptionHandler(0)
+    }.elsewhen(hasXRet(0)) { // XRet ?
+      gotoXRetPath(0)
+    }.elsewhen(hasCSR(0)) { // CSR ?
+      writeCSRs(0)
       updateRegister(0)
-    }.elsewhen(needsRecovery(1)) {
-      gotoRecoveryPath(retireEntries(1).spec)
+      gotoCSRPath(0)
+    }.elsewhen(hasBranch(0)) { // Branch ?
       updateRegister(0)
-    }.otherwise {
-      updateRegister(0)
-      updateRegister(1)
+      gotoRecoveryPath(0)
+    }.otherwise { // Normal 0
+      when(retireEntries(0).valid) {
+        updateRegister(0)
+      }
+
+      when(hasException(1)) { // Exception ?
+        gotoExceptionHandler(1)
+      }.elsewhen(hasXRet(1)) { // XRet ?
+        gotoXRetPath(1)
+      }.elsewhen(hasCSR(1)) { // CSR ?
+        writeCSRs(1)
+        updateRegister(1)
+        gotoCSRPath(1)
+      }.elsewhen(hasBranch(1)) { // Branch ?
+        updateRegister(1)
+        gotoRecoveryPath(1)
+      }.elsewhen(retireEntries(1).valid) { // Normal 1
+        updateRegister(1)
+      }
     }
-
-    // when(
-    //   io.tableRetire.entries(id1).valid || io.tableRetire.entries(id2).valid
-    // ) {
-    //   printf(
-    //     "retired instruction: \n pc = %d , r = %d, v = %d \n pc = %d , r = %d, v = %d \n",
-    //     io.tableRetire.entries(id1).pc,
-    //     io.tableRetire.entries(id1).result,
-    //     io.tableRetire.entries(id1).valid,
-    //     io.tableRetire.entries(id2).pc,
-    //     io.tableRetire.entries(id2).result,
-    //     io.tableRetire.entries(id2).valid
-    //   )
-
-    //   io.update.entries(0).rd := io.tableRetire.entries(id1).rd
-    //   io.update.entries(0).result := io.tableRetire.entries(id1).result
-    //   io.update.entries(1).rd := io.tableRetire.entries(id2).rd
-    //   io.update.entries(1).result := io.tableRetire.entries(id2).result
-
-    //   val id1Violate = io.tableRetire.entries(id1).valid &&
-    //     io.tableRetire.entries(id1).real =/= io.tableRetire.entries(id1).spec
-    //   when(id1Violate) {
-    //     io.recover := true.B
-    //     io.update.entries(1).rd := 0.U // Drop 1
-    //     io.correctPC := io.tableRetire.entries(id1).real
-    //     printf(
-    //       "spec violate!!!: pc = %d, sepc = %d, real = %d\n",
-    //       io.tableRetire.entries(id1).pc,
-    //       io.tableRetire.entries(id1).spec,
-    //       io.tableRetire.entries(id1).real
-    //     )
-    //   }
-
-    //   when(
-    //     !id1Violate &&
-    //       io.tableRetire.entries(id2).valid &&
-    //       io.tableRetire.entries(id2).real =/= io.tableRetire.entries(id2).spec
-    //   ) {
-    //     io.recover := true.B
-    //     io.correctPC := io.tableRetire.entries(id2).real
-    //     printf(
-    //       "spec violate!!!: pc = %d, sepc = %d, real = %d\n",
-    //       io.tableRetire.entries(id2).pc,
-    //       io.tableRetire.entries(id2).spec,
-    //       io.tableRetire.entries(id2).real
-    //     )
-    //   }
-    // }
   }
 }

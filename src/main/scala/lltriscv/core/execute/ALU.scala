@@ -20,7 +20,7 @@ import lltriscv.core.decode.InstructionType
   *
   * TODO: Currently, only RV32I is supported
   *
-  * (lui, auipc, add(i), sub, sll(i), slt(i), sltu(i), xor(i), srl(i), sra(i), or(i), and(i), csrrw(i), csrrs(i), csrrc(i))
+  * (lui, auipc, add(i), sub, sll(i), slt(i), sltu(i), xor(i), srl(i), sra(i), or(i), and(i), csrrw(i), csrrs(i), csrrc(i), ecall, ebreak, mret, sret)
   */
 class ALU extends Module {
   val io = IO(new Bundle {
@@ -48,6 +48,7 @@ class ALU extends Module {
   // Privilege interface
   aluDecodeStage.io.csr <> io.csr
   aluDecodeStage.io.privilege := io.privilege
+  aluExecuteStage.io.privilege := io.privilege
 }
 
 /** ALU decode stage
@@ -128,8 +129,15 @@ class ALUDecodeStage extends Module {
     }
   }.elsewhen(inReg.opcode(6, 2) === "b01101".U || inReg.opcode(6, 2) === "b00101".U) { // lui / auipc
     io.out.bits.op := ALUOperationType.add
-  }.elsewhen(inReg.opcode(6, 2) === "b11100".U) { // CSR
+  }.elsewhen(inReg.opcode(6, 2) === "b11100".U) { // CSR, ecall, ebreak
     switch(inReg.func3) {
+      is("b000".U) {
+        when(inReg.imm(1)) { // xret
+          io.out.bits.op := ALUOperationType.xret
+        }.otherwise { // env
+          io.out.bits.op := ALUOperationType.env
+        }
+      }
       is("b001".U) {
         io.out.bits.op := ALUOperationType.csrrw
       }
@@ -161,7 +169,7 @@ class ALUDecodeStage extends Module {
     io.out.bits.op1 := inReg.rs1.receipt
     io.out.bits.op2 := inReg.rs2.receipt
   }.elsewhen(inReg.instructionType === InstructionType.I) { // I
-    when(inReg.opcode(6, 2) === "b11100".U) { // CSR I
+    when(inReg.opcode(6, 2) === "b11100".U && inReg.func3 =/= 0.U) { // CSR I
       // CSR access
       io.out.bits.csrAddress := inReg.imm(11, 0)
       io.csr.address := inReg.imm(11, 0)
@@ -169,7 +177,7 @@ class ALUDecodeStage extends Module {
         // Non-existent CSR
         io.csr.error ||
           // Read-only violate
-          ((io.out.bits.op1 =/= 0.U || io.out.bits.op === ALUOperationType.csrrw) && inReg.imm(11, 10) === "b11".U) ||
+          ((io.out.bits.op2 =/= 0.U || io.out.bits.op === ALUOperationType.csrrw) && inReg.imm(11, 10) === "b11".U) ||
           // Unauthorized access
           (io.privilege === PrivilegeType.S && inReg.imm(9, 8) === "b11".U) || (io.privilege === PrivilegeType.U && inReg.imm(9, 8) =/= "b00".U)
       ) {
@@ -181,7 +189,7 @@ class ALUDecodeStage extends Module {
       when(inReg.func3(2) === 1.U) { // csrrxi
         io.out.bits.op2 := inReg.zimm // Zero extend imm
       }.otherwise {
-        io.out.bits.op2 := inReg.rs1
+        io.out.bits.op2 := inReg.rs1.receipt
       }
     }.otherwise { // General I
       io.out.bits.op1 := inReg.rs1.receipt
@@ -219,7 +227,8 @@ class ALUExecuteStage extends Module {
     // Pipeline interface
     val in = Flipped(DecoupledIO(new ALUExecuteStageEntry()))
     val out = DecoupledIO(new ExecuteResultEntry())
-
+    // Current core privilege
+    val privilege = Input(PrivilegeType())
     // Recovery interface
     val recover = Input(Bool())
   })
@@ -239,6 +248,8 @@ class ALUExecuteStage extends Module {
   // Result and CSR
   io.out.bits.result := 0.U
   io.out.bits.noCSR()
+  io.out.bits.noException()
+  io.out.bits.xret := false.B
   switch(inReg.op) {
     is(ALUOperationType.add) {
       io.out.bits.result := inReg.op1 + inReg.op2
@@ -276,16 +287,46 @@ class ALUExecuteStage extends Module {
     }
     is(ALUOperationType.csrrs) {
       io.out.bits.result := inReg.op1
-      io.out.bits.resultCSR(inReg.csrAddress, inReg.op1 | inReg.op2)
+      // When inReg.op2 === 0, it is a read operation
+      when(inReg.op2 =/= 0.U) {
+        io.out.bits.resultCSR(inReg.csrAddress, inReg.op1 | inReg.op2)
+      }
     }
     is(ALUOperationType.csrrc) {
       io.out.bits.result := inReg.op1
-      io.out.bits.resultCSR(inReg.csrAddress, inReg.op1 & ~inReg.op2)
+      when(inReg.op2 =/= 0.U) {
+        io.out.bits.resultCSR(inReg.csrAddress, inReg.op1 & ~inReg.op2)
+      }
+    }
+    is(ALUOperationType.env) {
+      when(inReg.op2(0)) { // ebreak
+        io.out.bits.triggerException(ExceptionCode.breakpoint)
+      }.otherwise { // ecall
+        switch(io.privilege) {
+          is(PrivilegeType.M) { io.out.bits.triggerException(ExceptionCode.environmentCallFromMMode) }
+          is(PrivilegeType.S) { io.out.bits.triggerException(ExceptionCode.environmentCallFromSMode) }
+          is(PrivilegeType.U) { io.out.bits.triggerException(ExceptionCode.environmentCallFromUMode) }
+        }
+      }
+    }
+    is(ALUOperationType.xret) {
+      when(inReg.op2(9)) { // mret
+        when(io.privilege === PrivilegeType.M) { // OK
+          io.out.bits.xret := true.B
+        }.otherwise { // Unauthorized access
+          io.out.bits.triggerException(ExceptionCode.illegalInstruction)
+        }
+      }.otherwise { // sret
+        when(io.privilege === PrivilegeType.S) { // OK
+          io.out.bits.xret := true.B
+        }.otherwise { // Unauthorized access
+          io.out.bits.triggerException(ExceptionCode.illegalInstruction)
+        }
+      }
     }
   }
 
-  // Exception
-  io.out.bits.noException()
+  // CSR Error
   when(inReg.csrError) {
     io.out.bits.triggerException(ExceptionCode.illegalInstruction)
   }

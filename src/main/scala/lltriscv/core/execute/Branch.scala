@@ -190,6 +190,7 @@ class BranchExecuteStage extends Module {
 
   io.out.bits.result := inReg.next // Save next PC
 
+  io.out.bits.xret := false.B
   // Exception
   io.out.bits.noException()
   // Memory
