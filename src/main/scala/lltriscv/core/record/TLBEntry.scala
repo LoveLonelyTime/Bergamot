@@ -15,10 +15,10 @@ class TLBEntry extends Bundle {
 object TLBErrorCode extends ChiselEnum {
   /*
    * success: Translation successful
-   * accessFault: Access denied
+   * memoryFault: Memory fault
    * pageFault: Invalid page table
    */
-  val success, pageFault, accessFault = Value
+  val success, pageFault, memoryFault = Value
 }
 
 object PTERWX {
@@ -40,4 +40,13 @@ class TLBVAddressEntry extends Bundle {
 class TLBPAddressEntry extends Bundle {
   val address = DataType.address
   val error = TLBErrorCode()
+}
+
+class TLBRequestIO extends Bundle {
+  val vaddress = Output(DataType.address)
+  val write = Output(Bool())
+  val paddress = Input(DataType.address)
+  val error = Input(TLBErrorCode())
+  val valid = Output(Bool())
+  val ready = Input(Bool())
 }

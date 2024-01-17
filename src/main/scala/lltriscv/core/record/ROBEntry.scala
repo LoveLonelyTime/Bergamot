@@ -4,7 +4,6 @@ import chisel3._
 import chisel3.util._
 
 import lltriscv.core._
-import lltriscv.core.execute.MemoryWriteType
 import lltriscv.core.execute.ExecuteResultEntry
 
 /*

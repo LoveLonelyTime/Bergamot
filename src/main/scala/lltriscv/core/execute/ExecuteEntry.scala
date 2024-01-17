@@ -54,12 +54,6 @@ object ExceptionCode {
   val storeAMOPageFault = 15.U
 }
 
-/** Memory write type
-  */
-object MemoryWriteType extends ChiselEnum {
-  val word, half, byte = Value
-}
-
 /** Execute result entry
   *
   * The output of execute component
@@ -74,9 +68,7 @@ class ExecuteResultEntry extends Bundle {
 
   // Write memory field
   val write = Bool()
-  val writeType = MemoryWriteType()
-  val address = DataType.address
-  val data = DataType.operation
+  val writeID = DataType.receipt
 
   // CSR field
   val writeCSR = Bool()
@@ -117,16 +109,12 @@ class ExecuteResultEntry extends Bundle {
 
   def noMemory() = {
     write := false.B
-    writeType := MemoryWriteType.word
-    address := 0.U
-    data := 0.U
+    writeID := 0.U
   }
 
-  def resultMemory(waddr: UInt, wdata: UInt, tp: MemoryWriteType.Type) = {
+  def resultMemory(id: UInt) = {
     write := true.B
-    writeType := tp
-    address := waddr
-    data := wdata
+    writeID := id
   }
 
   def noResult() = {

@@ -7,6 +7,7 @@ import lltriscv.core._
 import lltriscv.core.record._
 import lltriscv.core.execute._
 import lltriscv.utils.CoreUtils
+import lltriscv.utils.ChiselUtils._
 import lltriscv.core.broadcast.DataBroadcastIO
 
 /*
@@ -79,10 +80,10 @@ class DecodeStage extends Module {
   private val inReg = Reg(Vec(2, new DecodeStageEntry()))
 
   io.in.ready := io.out.ready
-  when(io.out.valid && io.out.ready) { // Stall
+  when(io.out.fire) { // Stall
     inReg.foreach(_.valid := false.B)
   }
-  when(io.in.valid && io.in.ready) { // Sample
+  when(io.in.fire) { // Sample
     inReg := io.in.bits
   }
 
@@ -141,18 +142,14 @@ class DecodeStage extends Module {
     val rs1Tozimm = inReg(i).instruction(6, 2) === "b11100".U && inReg(i).instruction(14) === 1.U
 
     // rd: R/I/U/J
-    when(
-      instructionType === InstructionType.R || instructionType === InstructionType.I || instructionType === InstructionType.U || instructionType === InstructionType.J
-    ) {
+    when(instructionType in (InstructionType.R, InstructionType.I, InstructionType.U, InstructionType.J)) {
       io.out.bits(i).rd := inReg(i).instruction(11, 7)
     }.otherwise {
       io.out.bits(i).rd := 0.U
     }
 
     // rs1(zimm): R/I/S/B
-    when(
-      instructionType === InstructionType.R || instructionType === InstructionType.I || instructionType === InstructionType.S || instructionType === InstructionType.B
-    ) {
+    when(instructionType in (InstructionType.R, InstructionType.I, InstructionType.S, InstructionType.B)) {
       when(rs1Tozimm) {
         io.out.bits(i).zimm := inReg(i).instruction(19, 15)
         io.out.bits(i).rs1 := 0.U
@@ -166,27 +163,21 @@ class DecodeStage extends Module {
     }
 
     // rs2: R/S/B
-    when(
-      instructionType === InstructionType.R || instructionType === InstructionType.S || instructionType === InstructionType.B
-    ) {
+    when(instructionType in (InstructionType.R, InstructionType.S, InstructionType.B)) {
       io.out.bits(i).rs2 := inReg(i).instruction(24, 20)
     }.otherwise {
       io.out.bits(i).rs2 := 0.U
     }
 
     // func3: R/I/S/B
-    when(
-      instructionType === InstructionType.R || instructionType === InstructionType.I || instructionType === InstructionType.S || instructionType === InstructionType.B
-    ) {
+    when(instructionType in (InstructionType.R, InstructionType.I, InstructionType.S, InstructionType.B)) {
       io.out.bits(i).func3 := inReg(i).instruction(14, 12)
     }.otherwise {
       io.out.bits(i).func3 := 0.U
     }
 
     // func7: R
-    when(
-      instructionType === InstructionType.R
-    ) {
+    when(instructionType in (InstructionType.R)) {
       io.out.bits(i).func7 := inReg(i).instruction(31, 25)
     }.otherwise {
       io.out.bits(i).func7 := 0.U
@@ -227,14 +218,16 @@ class DecodeStage extends Module {
 
     // Execute queue arbitration
     when(
-      io.out.bits(i).opcode(6, 2) === "b11011".U || // jal
-        io.out.bits(i).opcode(6, 2) === "b11001".U || // jalr
-        instructionType === InstructionType.B
+      (io.out.bits(i).opcode(6, 2) in (
+        "b11011".U, // jal
+        "b11001".U // jalr
+      )) ||
+        instructionType === InstructionType.B // b
     ) {
       io.out.bits(i).executeQueue := ExecuteQueueType.branch
     }.elsewhen(
       io.out.bits(i).opcode(6, 2) === "b00000".U || // load
-        instructionType === InstructionType.S
+        instructionType === InstructionType.S // store
     ) {
       io.out.bits(i).executeQueue := ExecuteQueueType.memory
     }.otherwise {
@@ -281,10 +274,10 @@ class RegisterMappingStage extends Module {
 
   // Waiting for mapping
   io.in.ready := io.mapping.ready && io.out.ready
-  when(io.out.valid && io.out.ready) { // Stall
+  when(io.out.fire) { // Stall
     inReg.foreach(_.valid := false.B)
   }
-  when(io.in.valid && io.in.ready) { // Sample
+  when(io.in.fire) { // Sample
     inReg := io.in.bits
   }
 
@@ -471,7 +464,7 @@ class IssueStage(executeQueueWidth: Int) extends Module {
 
   // Pipeline logic
   io.in.ready := queueReady(0) && queueReady(1)
-  when(io.in.valid && io.in.ready) {
+  when(io.in.fire) { // Sample
     inReg := io.in.bits
   }
 

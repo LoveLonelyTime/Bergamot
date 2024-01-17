@@ -6,6 +6,7 @@ import chisel3.util._
 import lltriscv.core._
 import lltriscv.core.record._
 import lltriscv.utils.CoreUtils
+import lltriscv.utils.ChiselUtils._
 import lltriscv.core.decode.InstructionType
 
 /*
@@ -17,8 +18,6 @@ import lltriscv.core.decode.InstructionType
 /** ALU execute queue
   *
   * ALUDecodeStage -> ALUExecuteStage
-  *
-  * TODO: Currently, only RV32I is supported
   *
   * (lui, auipc, add(i), sub, sll(i), slt(i), sltu(i), xor(i), srl(i), sra(i), or(i), and(i), csrrw(i), csrrs(i), csrrc(i), ecall, ebreak, mret, sret)
   */
@@ -72,10 +71,10 @@ class ALUDecodeStage extends Module {
   // Pipeline logic
   private val inReg = Reg(new ExecuteEntry())
 
-  when(io.out.ready && io.out.valid) { // Stall
+  when(io.out.fire) { // Stall
     inReg.valid := false.B
   }
-  when(io.in.ready && io.in.valid) { // Sample
+  when(io.in.fire) { // Sample
     inReg := io.in.bits
   }
 
@@ -84,7 +83,7 @@ class ALUDecodeStage extends Module {
   // Decode logic
   // op
   io.out.bits.op := ALUOperationType.undefined
-  when(inReg.opcode(6, 2) === "b00100".U || inReg.opcode(6, 2) === "b01100".U) { // Basic ALU instructions
+  when(inReg.opcode(6, 2) in ("b00100".U, "b01100".U)) { // Basic ALU instructions
     switch(inReg.func3) {
       is("b100".U) {
         io.out.bits.op := ALUOperationType.xor
@@ -127,7 +126,7 @@ class ALUDecodeStage extends Module {
         )
       }
     }
-  }.elsewhen(inReg.opcode(6, 2) === "b01101".U || inReg.opcode(6, 2) === "b00101".U) { // lui / auipc
+  }.elsewhen(inReg.opcode(6, 2) in ("b01101".U, "b00101".U)) { // lui / auipc
     io.out.bits.op := ALUOperationType.add
   }.elsewhen(inReg.opcode(6, 2) === "b11100".U) { // CSR, ecall, ebreak
     switch(inReg.func3) {
@@ -237,10 +236,10 @@ class ALUExecuteStage extends Module {
 
   io.in.ready := io.out.ready
 
-  when(io.out.ready && io.out.valid) { // Stall
+  when(io.out.fire) { // Stall
     inReg.valid := false.B
   }
-  when(io.in.ready && io.in.valid) { // Sample
+  when(io.in.fire) { // Sample
     inReg := io.in.bits
   }
 

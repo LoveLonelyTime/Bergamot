@@ -58,8 +58,8 @@ class ALUExecuteStageEntry extends Bundle {
   val op1 = DataType.operation // Operand 1
   val op2 = DataType.operation // Operand 2
   val rd = DataType.receipt // Destination receipt
-  val csrAddress = DataType.csr // CSR Address
-  val csrError = Bool() // CSR Error
+  val csrAddress = DataType.csr // CSR address
+  val csrError = Bool() // CSR error
   val pc = DataType.address // Corresponding PC
   val next = DataType.address // Next PC
   val valid = Bool() // Validity

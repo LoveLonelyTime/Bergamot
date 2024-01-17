@@ -190,7 +190,7 @@ class DataTLB(depth: Int) extends Module {
           statusReg := Status.lookup // Return
         }
       }.otherwise { // Memory error
-        error(TLBErrorCode.accessFault)
+        error(TLBErrorCode.memoryFault)
       }
     }
   }
@@ -219,7 +219,7 @@ class DataTLB(depth: Int) extends Module {
           statusReg := Status.lookup // Return
         }
       }.otherwise { // Memory error
-        error(TLBErrorCode.accessFault)
+        error(TLBErrorCode.memoryFault)
       }
     }
   }

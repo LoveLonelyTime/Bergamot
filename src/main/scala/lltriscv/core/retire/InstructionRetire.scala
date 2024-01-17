@@ -7,6 +7,7 @@ import lltriscv.core.record.ROBTableRetireIO
 import lltriscv.core.record.RegisterUpdateIO
 import lltriscv.core.record.CSRsWriteIO
 import lltriscv.core.record.ExceptionRequestIO
+import lltriscv.core.record.StoreQueueRetireIO
 
 /*
  * Instruction retire
@@ -33,6 +34,8 @@ class InstructionRetire(depth: Int) extends Module {
     val tableRetire = Flipped(new ROBTableRetireIO(depth))
     // Register update interface
     val update = new RegisterUpdateIO()
+    // Store queue interface
+    val store = new StoreQueueRetireIO()
     // Recovery interface
     val recover = Output(new Bool())
     val correctPC = Output(DataType.address)
@@ -60,6 +63,10 @@ class InstructionRetire(depth: Int) extends Module {
   io.update.entries.foreach(item => {
     item.rd := 0.U
     item.result := 0.U
+  })
+  io.store.entries.foreach(item => {
+    item.en := false.B
+    item.id := 0.U
   })
   io.csr.wen := false.B
   io.csr.address := 0.U
@@ -127,6 +134,13 @@ class InstructionRetire(depth: Int) extends Module {
     )
   }
 
+  def retireStoreQueue(id: Int) = {
+    when(retireEntries(id).executeResult.write) {
+      io.store.entries(id).en := true.B
+      io.store.entries(id).id := retireEntries(id).executeResult.writeID
+    }
+  }
+
   def writeCSRs(id: Int) = {
     io.csr.wen := true.B
     io.csr.address := retireEntries(id).executeResult.csrAddress
@@ -144,13 +158,16 @@ class InstructionRetire(depth: Int) extends Module {
     }.elsewhen(hasCSR(0)) { // CSR ?
       writeCSRs(0)
       updateRegister(0)
+      retireStoreQueue(0)
       gotoCSRPath(0)
     }.elsewhen(hasBranch(0)) { // Branch ?
       updateRegister(0)
+      retireStoreQueue(0)
       gotoRecoveryPath(0)
     }.otherwise { // Normal 0
       when(retireEntries(0).valid) {
         updateRegister(0)
+        retireStoreQueue(0)
       }
 
       when(hasException(1)) { // Exception ?
@@ -160,12 +177,15 @@ class InstructionRetire(depth: Int) extends Module {
       }.elsewhen(hasCSR(1)) { // CSR ?
         writeCSRs(1)
         updateRegister(1)
+        retireStoreQueue(1)
         gotoCSRPath(1)
       }.elsewhen(hasBranch(1)) { // Branch ?
         updateRegister(1)
+        retireStoreQueue(1)
         gotoRecoveryPath(1)
       }.elsewhen(retireEntries(1).valid) { // Normal 1
         updateRegister(1)
+        retireStoreQueue(1)
       }
     }
   }

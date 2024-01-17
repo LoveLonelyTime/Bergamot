@@ -29,4 +29,16 @@ object ChiselUtils {
   def int2UInt(x: Int) = {
     s"b${int2BinaryString(x, 32)}".U
   }
+
+  implicit class OperationExtension[T <: Data](x: T) {
+    def in(items: T*): Bool = {
+      items.foldLeft(false.B)((p, n) => {
+        p || x === n
+      })
+    }
+
+    def in(items: Iterable[T]): Bool = {
+      this.in(items.toSeq: _*)
+    }
+  }
 }

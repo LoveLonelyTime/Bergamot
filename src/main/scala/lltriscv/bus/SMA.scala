@@ -2,30 +2,55 @@ package lltriscv.bus
 
 import chisel3._
 import chisel3.util._
+import lltriscv.core.execute.MemoryAccessLength
 
 /*
- * SMA (Simple Memory Access) interface
+ * SMA (Simple Memory Access) bus interface
+ *
+ * SMA is a simple storage (cache, memory or IO) access bus interface that provides byte, half word, and single word access.
+ * SMA provides a simpler interface to access storage devices, and sender does not need to consider storage properties.
+ * The sender request bus by setting valid signal, then keep the request parameters unchanged.
+ * The storage device will transmit result through a cycle of ready signal.
+ * Please note that once the request is started, it cannot be cancelled until the ready signal is high.
+ *
+ * Copyright (C) 2024-2025 LoveLonelyTime
  */
 
+/** SMA specification
+  */
 object SMASpec {
-  val addressWidth = 32
-  val dataWidth = 32
+  val addressWidth = 32 // Address width
+  val dataWidth = 32 // Data width
 }
 
+/** SMAReaderIO
+  *
+  * SMA reader interface
+  */
 class SMAReaderIO extends Bundle {
+  // Out
   val address = Output(UInt(SMASpec.addressWidth.W))
+  val readType = Output(MemoryAccessLength())
+  // In
   val data = Input(UInt(SMASpec.dataWidth.W))
+  val error = Input(Bool())
+  // Handshake signals
   val valid = Output(Bool())
   val ready = Input(Bool())
-  val error = Input(Bool())
 }
 
-class SMAReaderWriterIO extends Bundle {
+/** SMAWriteIO
+  *
+  * SMA writer interface
+  */
+class SMAWriteIO extends Bundle {
+  // Out
   val address = Output(UInt(SMASpec.addressWidth.W))
-  val wen = Output(Bool())
-  val wdata = Output(UInt(SMASpec.dataWidth.W))
-  val rdata = Input(UInt(SMASpec.dataWidth.W))
+  val data = Output(UInt(SMASpec.dataWidth.W))
+  val writeType = Output(MemoryAccessLength())
+  // In
+  val error = Input(Bool())
+  // Handshake signals
   val valid = Output(Bool())
   val ready = Input(Bool())
-  val error = Input(Bool())
 }

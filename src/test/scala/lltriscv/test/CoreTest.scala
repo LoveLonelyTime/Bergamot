@@ -62,7 +62,7 @@ class CoreTest extends Module {
   private val fetcher = Module(new PCVerifyStage())
   private val registerMappingTable = Module(new RegisterMappingTable())
   private val rob = Module(new ROB(8))
-  private val instructionDecoder = Module(new InstructionDecoder(2))
+  private val instructionDecoder = Module(new InstructionDecoder(3))
 
   private val aluExecuteQueue =
     Module(new InOrderedExecuteQueue(8, ExecuteQueueType.alu))
@@ -72,23 +72,32 @@ class CoreTest extends Module {
     Module(new InOrderedExecuteQueue(8, ExecuteQueueType.branch))
   private val branch = Module(new Branch())
 
-  private val broadcast = Module(new RoundRobinBroadcaster(2))
+  private val memoryExecuteQueue =
+    Module(new InOrderedExecuteQueue(8, ExecuteQueueType.memory))
+  private val memory = Module(new Memory())
+
+  private val broadcast = Module(new RoundRobinBroadcaster(3))
 
   private val retireMock = Module(new InstructionRetire(8))
 
   private val csr = Module(new CSRs())
+
+  private val storeQueue = Module(new StoreQueue(8))
 
   fetcher.io.in <> io.in
   io.pc := fetcher.io.pc
 
   aluExecuteQueue.io.broadcast <> broadcast.io.broadcast
   branchExecuteQueue.io.broadcast <> broadcast.io.broadcast
+  memoryExecuteQueue.io.broadcast <> broadcast.io.broadcast
 
   alu.io.in <> aluExecuteQueue.io.deq
   branch.io.in <> branchExecuteQueue.io.deq
+  memory.io.in <> memoryExecuteQueue.io.deq
 
   broadcast.io.queues(0) <> alu.io.out
   broadcast.io.queues(1) <> branch.io.out
+  broadcast.io.queues(2) <> memory.io.out
 
   instructionDecoder.io.tableWrite <> rob.io.tableWrite
   broadcast.io.tableCommit <> rob.io.tableCommit
@@ -105,6 +114,7 @@ class CoreTest extends Module {
   instructionDecoder.io.in <> fetcher.io.out
   instructionDecoder.io.enqs(0) <> aluExecuteQueue.io.enqAndType
   instructionDecoder.io.enqs(1) <> branchExecuteQueue.io.enqAndType
+  instructionDecoder.io.enqs(2) <> memoryExecuteQueue.io.enqAndType
 
   retireMock.io.tableRetire <> rob.io.tableRetire
 
@@ -112,9 +122,11 @@ class CoreTest extends Module {
   instructionDecoder.io.recover := retireMock.io.recover
   aluExecuteQueue.io.recover := retireMock.io.recover
   branchExecuteQueue.io.recover := retireMock.io.recover
+  memoryExecuteQueue.io.recover := retireMock.io.recover
   alu.io.recover := retireMock.io.recover
   branch.io.recover := retireMock.io.recover
-
+  memory.io.recover := retireMock.io.recover
+  storeQueue.io.recover := retireMock.io.recover
   fetcher.io.recover := retireMock.io.recover
   fetcher.io.correctPC := retireMock.io.correctPC
 
@@ -123,6 +135,15 @@ class CoreTest extends Module {
 
   retireMock.io.csr <> csr.io.write
   retireMock.io.exception <> csr.io.exception
+  retireMock.io.store <> storeQueue.io.retire
+
+  memory.io.alloc <> storeQueue.io.alloc
+
+  memory.io.sma.ready := true.B
+  memory.io.sma.error := true.B
+  memory.io.sma.data := 0.U
+
+  storeQueue.io.deq.ready := true.B
 }
 
 class RegisterMappingTableTest extends AnyFreeSpec with ChiselScalatestTester {
