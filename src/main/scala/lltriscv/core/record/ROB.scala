@@ -72,13 +72,13 @@ class ROB(depth: Int) extends Module {
   io.tableRetire.entries := table
 
   // Queue logic
-  val incrRead = WireInit(false.B)
-  val incrWrite = WireInit(false.B)
-  val (readPtr, nextRead) = CoreUtils.pointer(depth, incrRead)
-  val (writePtr, nextWrite) = CoreUtils.pointer(depth, incrWrite)
+  private val incrRead = WireInit(false.B)
+  private val incrWrite = WireInit(false.B)
+  private val (readPtr, nextRead) = CoreUtils.pointer(depth, incrRead)
+  private val (writePtr, nextWrite) = CoreUtils.pointer(depth, incrWrite)
 
-  val emptyReg = RegInit(true.B)
-  val fullReg = RegInit(false.B)
+  private val emptyReg = RegInit(true.B)
+  private val fullReg = RegInit(false.B)
 
   io.alloc.valid := !fullReg
   io.retired.valid := !emptyReg
@@ -86,7 +86,7 @@ class ROB(depth: Int) extends Module {
   io.alloc.bits := writePtr
   io.retired.bits := readPtr
 
-  val op =
+  private val op =
     (io.alloc.valid && io.alloc.ready) ## (io.retired.valid && io.retired.ready)
 
   switch(op) {

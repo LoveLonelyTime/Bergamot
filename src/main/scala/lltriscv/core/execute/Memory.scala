@@ -12,6 +12,16 @@ import lltriscv.core.record.TLBErrorCode
 import lltriscv.bus.SMAWriteIO
 import lltriscv.core.record.StoreQueueAllocIO
 
+/*
+ * Memory operation unit, which is suitable for memory operations
+ *
+ * Copyright (C) 2024-2025 LoveLonelyTime
+ */
+
+/** Memory
+  *
+  * MemoryDecodeStage -> MemoryExecuteStage -> MemoryTLBStage -> MemoryReadWriteStage
+  */
 class Memory extends Module {
   val io = IO(new Bundle {
     // Pipeline interface
@@ -29,10 +39,10 @@ class Memory extends Module {
     val recover = Input(Bool())
   })
 
-  val memoryDecodeStage = Module(new MemoryDecodeStage())
-  val memoryExecuteStage = Module(new MemoryExecuteStage())
-  val memoryTLBStage = Module(new MemoryNoTLBStage())
-  val memoryReadWriteStage = Module(new MemoryReadWriteStage())
+  private val memoryDecodeStage = Module(new MemoryDecodeStage())
+  private val memoryExecuteStage = Module(new MemoryExecuteStage())
+  private val memoryTLBStage = Module(new MemoryNoTLBStage())
+  private val memoryReadWriteStage = Module(new MemoryReadWriteStage())
 
   io.in <> memoryDecodeStage.io.in
   memoryDecodeStage.io.out <> memoryExecuteStage.io.in
@@ -50,6 +60,12 @@ class Memory extends Module {
   memoryReadWriteStage.io.recover := io.recover
 }
 
+/** Memory decode stage
+  *
+  * Identify memory access types and address
+  *
+  * Single cycle stage
+  */
 class MemoryDecodeStage extends Module {
   val io = IO(new Bundle {
     // Pipeline interface
@@ -62,10 +78,10 @@ class MemoryDecodeStage extends Module {
   // Pipeline logic
   private val inReg = Reg(new ExecuteEntry())
 
-  when(io.out.ready && io.out.valid) { // Stall
+  when(io.out.fire) { // Stall
     inReg.valid := false.B
   }
-  when(io.in.ready && io.in.valid) { // Sample
+  when(io.in.fire) { // Sample
     inReg := io.in.bits
   }
 
@@ -119,22 +135,28 @@ class MemoryDecodeStage extends Module {
   }
 }
 
+/** Memory execute stage
+  *
+  * Calculate memory access virtual address
+  *
+  * Single cycle stage
+  */
 class MemoryExecuteStage extends Module {
   val io = IO(new Bundle {
     // Pipeline interface
     val in = Flipped(DecoupledIO(new MemoryExecuteStageEntry()))
     val out = DecoupledIO(new MemoryTLBStageEntry())
 
-    // Recovery logic
+    // Recovery interface
     val recover = Input(Bool())
   })
   // Pipeline logic
   private val inReg = Reg(new MemoryExecuteStageEntry())
 
-  when(io.out.ready && io.out.valid) { // Stall
+  when(io.out.fire) { // Stall
     inReg.valid := false.B
   }
-  when(io.in.ready && io.in.valid) { // Sample
+  when(io.in.fire) { // Sample
     inReg := io.in.bits
   }
 
@@ -210,6 +232,12 @@ class MemoryNoTLBStage extends Module {
   }
 }
 
+/** Memory TLB stage
+  *
+  * Accessing TLB to calculate physical addresses
+  *
+  * Waiting for TLB
+  */
 class MemoryTLBStage extends Module {
   val io = IO(new Bundle {
     // Pipeline interface
@@ -223,7 +251,7 @@ class MemoryTLBStage extends Module {
     val recover = Input(Bool())
   })
   private val statusReg = Reg(Status.idle)
-  object Status extends ChiselEnum {
+  private object Status extends ChiselEnum {
     val idle, request = Value
   }
 
@@ -232,26 +260,27 @@ class MemoryTLBStage extends Module {
   private val error = Reg(MemoryErrorCode())
   private val paddress = Reg(DataType.address)
 
-  when(io.out.ready && io.out.valid) { // Stall
+  when(io.out.fire) { // Stall
     inReg.valid := false.B
   }
-  when(io.in.ready && io.in.valid) { // Sample
+  when(io.in.fire) { // Sample
     inReg := io.in.bits
 
-    when(io.in.bits.valid && io.in.bits.error === MemoryErrorCode.none) {
+    when(io.in.bits.valid && io.in.bits.error === MemoryErrorCode.none) { // Effective access
       statusReg := Status.request
     }
   }
 
   io.in.ready := statusReg === Status.idle && io.out.ready // Idle
 
+  // TLB
   io.dtlb.valid := false.B
   io.dtlb.vaddress := 0.U
   io.dtlb.write := false.B
   when(statusReg === Status.request) {
     io.dtlb.valid := true.B
     io.dtlb.vaddress := inReg.vaddress
-    io.dtlb.write := (inReg.op in (MemoryOperationType.sb, MemoryOperationType.sh, MemoryOperationType.sw))
+    io.dtlb.write := (inReg.op in MemoryOperationType.writeValues)
     when(io.dtlb.valid && io.dtlb.ready) {
       switch(io.dtlb.error) {
         is(TLBErrorCode.success) { error := MemoryErrorCode.none }
@@ -284,9 +313,16 @@ class MemoryTLBStage extends Module {
   // Recovery logic
   when(io.recover) {
     inReg.valid := false.B
+    // To ensure TLB integrity, do not undo FSM
   }
 }
 
+/** Memory read write stage
+  *
+  * Access storage through SMA interface and commit to store queue
+  *
+  * Waiting for SMA interface and store queue
+  */
 class MemoryReadWriteStage extends Module {
   val io = IO(new Bundle {
     // Pipeline interface
@@ -301,7 +337,7 @@ class MemoryReadWriteStage extends Module {
   })
 
   private val statusReg = RegInit(Status.idle)
-  object Status extends ChiselEnum {
+  private object Status extends ChiselEnum {
     val idle, read, write = Value
   }
 
@@ -318,10 +354,10 @@ class MemoryReadWriteStage extends Module {
 
   when(io.in.fire) { // Sample
     inReg := io.in.bits
-    when(io.in.bits.valid && io.in.bits.error === MemoryErrorCode.none) { // Valid
-      when(io.in.bits.op in (MemoryOperationType.lb, MemoryOperationType.lbu, MemoryOperationType.lh, MemoryOperationType.lhu, MemoryOperationType.lw)) {
+    when(io.in.bits.valid && io.in.bits.error === MemoryErrorCode.none) { // Effective access
+      when(io.in.bits.op in MemoryOperationType.readValues) {
         statusReg := Status.read
-      }.elsewhen(io.in.bits.op in (MemoryOperationType.sb, MemoryOperationType.sh, MemoryOperationType.sw)) {
+      }.elsewhen(io.in.bits.op in MemoryOperationType.writeValues) {
         statusReg := Status.write
       }
     }
@@ -329,7 +365,7 @@ class MemoryReadWriteStage extends Module {
 
   io.in.ready := statusReg === Status.idle // Idle
 
-  // FSM
+  // Read FSM
   io.sma.valid := false.B
   io.sma.address := 0.U
   io.sma.readType := MemoryAccessLength.byte
@@ -351,6 +387,7 @@ class MemoryReadWriteStage extends Module {
     }
   }
 
+  // Write FSM
   io.alloc.valid := false.B
   io.alloc.data := 0.U
   io.alloc.address := 0.U
@@ -445,6 +482,7 @@ class MemoryReadWriteStage extends Module {
   // Recovery logic
   when(io.recover) {
     inReg.valid := false.B
-    when(statusReg === Status.write) { statusReg := Status.idle } // Undo
+    // Undo write FSM to prevent writing to store queue
+    when(statusReg === Status.write) { statusReg := Status.idle }
   }
 }

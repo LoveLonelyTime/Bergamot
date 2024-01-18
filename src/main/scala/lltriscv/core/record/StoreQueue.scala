@@ -4,10 +4,29 @@ import chisel3._
 import chisel3.util._
 import lltriscv.utils.CoreUtils
 
+/*
+ * Store queue
+ *
+ * The store queue is responsible for buffering memory write instructions.
+ * Provide recovery of memory write instructions.
+ *
+ * Copyright (C) 2024-2025 LoveLonelyTime
+ */
+
+/** Store queue
+  *
+  * Implemented by loop pointers
+  *
+  * @param depth
+  *   Store queue depth
+  */
 class StoreQueue(depth: Int) extends Module {
   val io = IO(new Bundle {
+    // Alloc interface
     val alloc = Flipped(new StoreQueueAllocIO())
+    // Dequeue interface
     val deq = DecoupledIO(new StoreQueueDequeueEntry())
+    // Retire interface
     val retire = Flipped(new StoreQueueRetireIO())
     // Recovery interface
     val recover = Input(Bool())
@@ -16,13 +35,13 @@ class StoreQueue(depth: Int) extends Module {
   // Read/Wirte pointers
   private val queue = Reg(Vec(depth, new StoreQueueEntry()))
 
-  val incrRead = WireInit(false.B)
-  val incrWrite = WireInit(false.B)
-  val (readPtr, nextRead) = CoreUtils.pointer(depth, incrRead)
-  val (writePtr, nextWrite) = CoreUtils.pointer(depth, incrWrite)
+  private val incrRead = WireInit(false.B)
+  private val incrWrite = WireInit(false.B)
+  private val (readPtr, nextRead) = CoreUtils.pointer(depth, incrRead)
+  private val (writePtr, nextWrite) = CoreUtils.pointer(depth, incrWrite)
 
-  val emptyReg = RegInit(true.B)
-  val fullReg = RegInit(false.B)
+  private val emptyReg = RegInit(true.B)
+  private val fullReg = RegInit(false.B)
 
   io.alloc.ready := !fullReg
   io.alloc.id := writePtr

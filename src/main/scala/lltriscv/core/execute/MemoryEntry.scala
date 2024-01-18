@@ -8,6 +8,24 @@ import lltriscv.core._
 /** Memory operation type
   */
 object MemoryOperationType extends ChiselEnum {
+  /*
+   * Reserve operation:
+   * - none: 0
+   * - undefined: 0 (Illegal instruction exception)
+   *
+   * Load operations:
+   * - lb: load byte
+   * - lh: load half word
+   * - lw: load word
+   * - lbu: load unsigned byte
+   * - lhu: load unsigned half word
+   *
+   * Store operations:
+   * - sb: store byte
+   * - sh: store half word
+   * - sw: store word
+   *
+   */
   val none, undefined, lb, lh, lw, lbu, lhu, sb, sh, sw = Value
 
   val readValues = List(lb, lh, lw, lbu, lhu)
@@ -20,7 +38,14 @@ object MemoryAccessLength extends ChiselEnum {
   val word, half, byte = Value
 }
 
+/** Memory error code
+  */
 object MemoryErrorCode extends ChiselEnum {
+  /*
+   * misaligned: Access address is misaligned
+   * pageFault: Page table fault
+   * memoryFault: Memory fault
+   */
   val none, misaligned, pageFault, memoryFault = Value
 }
 
@@ -39,6 +64,10 @@ class MemoryExecuteStageEntry extends Bundle {
   val valid = Bool() // Validity
 }
 
+/** Memory TLB stage entry
+  *
+  * The input entry of MemoryTLBStage
+  */
 class MemoryTLBStageEntry extends Bundle {
   val op = MemoryOperationType() // Memory operation type
   val error = MemoryErrorCode() // Memory error code
@@ -50,6 +79,10 @@ class MemoryTLBStageEntry extends Bundle {
   val valid = Bool() // Validity
 }
 
+/** Memory read write stage entry
+  *
+  * The input entry of MemoryReadWriteStage
+  */
 class MemoryReadWriteStageEntry extends Bundle {
   val op = MemoryOperationType() // Memory operation type
   val error = MemoryErrorCode() // Memory error code

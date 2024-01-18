@@ -78,7 +78,7 @@ class InstructionRetire(depth: Int) extends Module {
   io.exception.exceptionVal := 0.U
   io.exception.exceptionCode := 0.U
 
-  def gotoExceptionHandler(id: Int) = {
+  private def gotoExceptionHandler(id: Int) = {
     io.recover := true.B
 
     io.exception.trigger := true.B
@@ -89,7 +89,7 @@ class InstructionRetire(depth: Int) extends Module {
     printf("Exception!!!! pc = %d\n", retireEntries(id).pc)
   }
 
-  def gotoRecoveryPath(id: Int) = {
+  private def gotoRecoveryPath(id: Int) = {
     io.recover := true.B
     io.correctPC := retireEntries(id).executeResult.real
     printf(
@@ -100,7 +100,7 @@ class InstructionRetire(depth: Int) extends Module {
     )
   }
 
-  def gotoXRetPath(id: Int) = {
+  private def gotoXRetPath(id: Int) = {
     io.exception.xret := true.B
     io.recover := true.B
     io.correctPC := io.exception.handlerPC
@@ -111,18 +111,18 @@ class InstructionRetire(depth: Int) extends Module {
     )
   }
 
-  def gotoCSRPath(id: Int) = {
+  private def gotoCSRPath(id: Int) = {
     io.recover := true.B
     io.correctPC := retireEntries(id).executeResult.real
   }
 
-  def hasException(id: Int) = retireEntries(id).valid && retireEntries(id).executeResult.exception
-  def hasBranch(id: Int) = retireEntries(id).valid && retireEntries(id).executeResult.real =/= retireEntries(id).spec
+  private def hasException(id: Int) = retireEntries(id).valid && retireEntries(id).executeResult.exception
+  private def hasBranch(id: Int) = retireEntries(id).valid && retireEntries(id).executeResult.real =/= retireEntries(id).spec
 
-  def hasCSR(id: Int) = retireEntries(id).valid && retireEntries(id).executeResult.writeCSR
-  def hasXRet(id: Int) = retireEntries(id).valid && retireEntries(id).executeResult.xret
+  private def hasCSR(id: Int) = retireEntries(id).valid && retireEntries(id).executeResult.writeCSR
+  private def hasXRet(id: Int) = retireEntries(id).valid && retireEntries(id).executeResult.xret
 
-  def updateRegister(id: Int) = {
+  private def updateRegister(id: Int) = {
     io.update.entries(id).rd := retireEntries(id).rd
     io.update.entries(id).result := retireEntries(id).executeResult.result
 
@@ -134,14 +134,14 @@ class InstructionRetire(depth: Int) extends Module {
     )
   }
 
-  def retireStoreQueue(id: Int) = {
+  private def retireStoreQueue(id: Int) = {
     when(retireEntries(id).executeResult.write) {
       io.store.entries(id).en := true.B
       io.store.entries(id).id := retireEntries(id).executeResult.writeID
     }
   }
 
-  def writeCSRs(id: Int) = {
+  private def writeCSRs(id: Int) = {
     io.csr.wen := true.B
     io.csr.address := retireEntries(id).executeResult.csrAddress
     io.csr.data := retireEntries(id).executeResult.csrData

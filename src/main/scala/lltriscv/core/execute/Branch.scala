@@ -18,8 +18,6 @@ import lltriscv.core.decode.InstructionType
   *
   * BranchDecodeStage -> BranchExecuteStage
   *
-  * TODO: Currently, only RV32I is supported
-  *
   * (jal, jalr, beq, bne, blt, bge, bltu, bgeu)
   */
 class Branch extends Module {
@@ -28,7 +26,7 @@ class Branch extends Module {
     val in = Flipped(DecoupledIO(new ExecuteEntry()))
     val out = DecoupledIO(new ExecuteResultEntry())
 
-    // Recovery logic
+    // Recovery interface
     val recover = Input(Bool())
   })
   private val branchDecodeStage = Module(new BranchDecodeStage())
@@ -46,6 +44,8 @@ class Branch extends Module {
 /** Branch decode stage
   *
   * Identify comparison types and comparison operands
+  *
+  * Single cycle stage
   */
 class BranchDecodeStage extends Module {
   val io = IO(new Bundle {
@@ -53,17 +53,17 @@ class BranchDecodeStage extends Module {
     val in = Flipped(DecoupledIO(new ExecuteEntry()))
     val out = DecoupledIO(new BranchExecuteStageEntry())
 
-    // Recovery logic
+    // Recovery interface
     val recover = Input(Bool())
   })
 
   // Pipeline logic
   private val inReg = Reg(new ExecuteEntry())
 
-  when(io.out.ready && io.out.valid) { // Stall
+  when(io.out.fire) { // Stall
     inReg.valid := false.B
   }
-  when(io.in.ready && io.in.valid) { // Sample
+  when(io.in.fire) { // Sample
     inReg := io.in.bits
   }
 
@@ -74,7 +74,7 @@ class BranchDecodeStage extends Module {
   io.out.bits.op := BranchOperationType.undefined
   when(inReg.opcode(2) === 1.U) { // jal & jalr
     io.out.bits.op := BranchOperationType.jal
-  }.otherwise {
+  }.otherwise { // b
     switch(inReg.func3) {
       is("b000".U) { io.out.bits.op := BranchOperationType.eq }
       is("b001".U) { io.out.bits.op := BranchOperationType.ne }
@@ -122,6 +122,8 @@ class BranchDecodeStage extends Module {
 /** Branch execute stage
   *
   * Compare and calculate jump addresses
+  *
+  * Single cycle stage
   */
 class BranchExecuteStage extends Module {
   val io = IO(new Bundle {
@@ -129,7 +131,7 @@ class BranchExecuteStage extends Module {
     val in = Flipped(DecoupledIO(new BranchExecuteStageEntry()))
     val out = DecoupledIO(new ExecuteResultEntry())
 
-    // Recovery logic
+    // Recovery interface
     val recover = Input(Bool())
   })
 
@@ -138,10 +140,10 @@ class BranchExecuteStage extends Module {
 
   io.in.ready := io.out.ready
 
-  when(io.out.ready && io.out.valid) { // Stall
+  when(io.out.fire) { // Stall
     inReg.valid := false.B
   }
-  when(io.in.ready && io.in.valid) { // Sample
+  when(io.in.fire) { // Sample
     inReg := io.in.bits
   }
 

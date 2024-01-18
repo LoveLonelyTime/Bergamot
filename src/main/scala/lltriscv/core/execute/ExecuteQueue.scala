@@ -20,8 +20,7 @@ import lltriscv.utils.CoreUtils
   * @param queueType
   *   Queue type
   */
-abstract class ExecuteQueue(depth: Int, queueType: ExecuteQueueType.Type)
-    extends Module {
+abstract class ExecuteQueue(depth: Int, queueType: ExecuteQueueType.Type) extends Module {
   require(depth > 0, "Execute queue depth must be greater than 0")
 
   val io = IO(new Bundle {
@@ -42,8 +41,7 @@ abstract class ExecuteQueue(depth: Int, queueType: ExecuteQueueType.Type)
 
 /** The in ordered implementation of execute queue
   *
-  * This execute queue is in ordered, which is suitable for instruction sets
-  * that require in ordered within the queue
+  * This execute queue is in ordered, which is suitable for instruction sets that require in ordered within the queue
   *
   * Implementation using read/write pointer queue
   *
@@ -52,19 +50,18 @@ abstract class ExecuteQueue(depth: Int, queueType: ExecuteQueueType.Type)
   * @param queueType
   *   Queue type
   */
-class InOrderedExecuteQueue(depth: Int, queueType: ExecuteQueueType.Type)
-    extends ExecuteQueue(depth, queueType) {
+class InOrderedExecuteQueue(depth: Int, queueType: ExecuteQueueType.Type) extends ExecuteQueue(depth, queueType) {
 
   // Read/Wirte pointers
   private val queue = Reg(Vec(depth, new ExecuteEntry()))
 
-  val incrRead = WireInit(false.B)
-  val incrWrite = WireInit(false.B)
-  val (readPtr, nextRead) = CoreUtils.pointer(depth, incrRead)
-  val (writePtr, nextWrite) = CoreUtils.pointer(depth, incrWrite)
+  private val incrRead = WireInit(false.B)
+  private val incrWrite = WireInit(false.B)
+  private val (readPtr, nextRead) = CoreUtils.pointer(depth, incrRead)
+  private val (writePtr, nextWrite) = CoreUtils.pointer(depth, incrWrite)
 
-  val emptyReg = RegInit(true.B)
-  val fullReg = RegInit(false.B)
+  private val emptyReg = RegInit(true.B)
+  private val fullReg = RegInit(false.B)
 
   io.enqAndType.enq.ready := !fullReg
 

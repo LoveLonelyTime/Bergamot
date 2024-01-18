@@ -33,7 +33,6 @@ class RegisterMappingTable extends Module {
     val recover = Input(Bool())
   })
 
-  // TODO:  Building register types
   private val table = Reg(Vec(32, new RegisterMappingTableEntry()))
 
   io.mapping.ready := io.alloc.valid // Alloc valid

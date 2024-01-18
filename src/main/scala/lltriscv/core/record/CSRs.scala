@@ -4,6 +4,20 @@ import chisel3._
 import chisel3.util._
 import lltriscv.core.DataType
 
+/*
+ * CSRs (Control and Status Registers) unit, is used to save the core and machine state
+ *
+ * A CSR is implemented by a register or a functional class
+ *
+ * Copyright (C) 2024-2025 LoveLonelyTime
+ */
+
+/** CSRs component
+  *
+  * Provide addressable read and write ports and fixed CSRs output.
+  *
+  * Responsible for switching states in exceptions and interrupts.
+  */
 class CSRs extends Module {
   val io = IO(new Bundle {
     // Write interface
@@ -12,30 +26,27 @@ class CSRs extends Module {
     val read = new CSRsReadIO()
     // Exception
     val exception = Flipped(new ExceptionRequestIO())
-    // Current core privilege
-    val privilege = Output(PrivilegeType())
-    // Read interface
+    // Fixed CSRs output
+    val privilege = Output(PrivilegeType()) // Current core privilege
     val satp = Output(DataType.operation)
-
   })
 
   // M-Mode CSRs
   private val mstatusReg = new MStatusRegister()
-  private val mtvec = Reg(DataType.operation)
-  private val medeleg = Reg(DataType.operation)
-  private val mepc = Reg(DataType.operation)
-  private val mcause = Reg(DataType.operation)
-  private val mtval = Reg(DataType.operation)
+  private val mtvecReg = Reg(DataType.operation)
+  private val medelegReg = Reg(DataType.operation)
+  private val mepcReg = Reg(DataType.operation)
+  private val mcauseReg = Reg(DataType.operation)
+  private val mtvalReg = Reg(DataType.operation)
 
   // S-Mode CSRs
   private val satpReg = Reg(DataType.operation)
-  private val stvec = Reg(DataType.operation)
-  private val sepc = Reg(DataType.operation)
-  private val scause = Reg(DataType.operation)
-  private val stval = Reg(DataType.operation)
+  private val stvecReg = Reg(DataType.operation)
+  private val sepcReg = Reg(DataType.operation)
+  private val scauseReg = Reg(DataType.operation)
+  private val stvalReg = Reg(DataType.operation)
 
   io.satp := satpReg
-
   io.privilege := mstatusReg.privilege
 
   // Read logic
@@ -46,37 +57,37 @@ class CSRs extends Module {
   io.read.error := true.B
   io.read.data := 0.U
   switch(io.read.address) {
-    is("h105".U) { responseRead(stvec) } // stvec
+    is("h105".U) { responseRead(stvecReg) } // stvec
 
-    is("h141".U) { responseRead(sepc) } // sepc
-    is("h142".U) { responseRead(scause) } // scause
-    is("h143".U) { responseRead(stval) } // stval
+    is("h141".U) { responseRead(sepcReg) } // sepc
+    is("h142".U) { responseRead(scauseReg) } // scause
+    is("h143".U) { responseRead(stvalReg) } // stval
 
     is("h300".U) { responseRead(mstatusReg.mstatusView) } // mstatus
-    is("h302".U) { responseRead(medeleg) } // medeleg
-    is("h305".U) { responseRead(mtvec) } // mtvec
+    is("h302".U) { responseRead(medelegReg) } // medeleg
+    is("h305".U) { responseRead(mtvecReg) } // mtvec
 
-    is("h341".U) { responseRead(mepc) } // mepc
-    is("h342".U) { responseRead(mcause) } // mcause
-    is("h343".U) { responseRead(mtval) } // mtval
+    is("h341".U) { responseRead(mepcReg) } // mepc
+    is("h342".U) { responseRead(mcauseReg) } // mcause
+    is("h343".U) { responseRead(mtvalReg) } // mtval
   }
 
   // Write logic
   when(io.write.wen) {
     switch(io.write.address) {
-      is("h105".U) { stvec := io.write.data } // stvec
+      is("h105".U) { stvecReg := io.write.data } // stvec
 
-      is("h141".U) { sepc := io.write.data } // sepc
-      is("h142".U) { scause := io.write.data } // scause
-      is("h143".U) { stval := io.write.data } // stval
+      is("h141".U) { sepcReg := io.write.data } // sepc
+      is("h142".U) { scauseReg := io.write.data } // scause
+      is("h143".U) { stvalReg := io.write.data } // stval
 
       is("h300".U) { mstatusReg.writeMStatus(io.write.data) } // mstatus
-      is("h302".U) { medeleg := io.write.data } // medeleg
-      is("h305".U) { mtvec := io.write.data } // mtvec
+      is("h302".U) { medelegReg := io.write.data } // medeleg
+      is("h305".U) { mtvecReg := io.write.data } // mtvec
 
-      is("h341".U) { mepc := io.write.data } // mepc
-      is("h342".U) { mcause := io.write.data } // mcause
-      is("h343".U) { mtval := io.write.data } // mtval
+      is("h341".U) { mepcReg := io.write.data } // mepc
+      is("h342".U) { mcauseReg := io.write.data } // mcause
+      is("h343".U) { mtvalReg := io.write.data } // mtval
     }
   }
 
@@ -84,18 +95,18 @@ class CSRs extends Module {
   io.exception.handlerPC := 0.U
   when(io.exception.trigger) {
     // Delegation check
-    val delegation = medeleg(io.exception.exceptionCode)
+    val delegation = medelegReg(io.exception.exceptionCode)
     when(delegation) { // S-Handler
-      sepc := io.exception.exceptionPC
-      scause := io.exception.exceptionCode
-      stval := io.exception.exceptionVal
-      io.exception.handlerPC := stvec(31, 2) ## 0.U(2.W)
+      sepcReg := io.exception.exceptionPC
+      scauseReg := io.exception.exceptionCode
+      stvalReg := io.exception.exceptionVal
+      io.exception.handlerPC := stvecReg(31, 2) ## 0.U(2.W)
       mstatusReg.trapToSLevel()
     }.otherwise { // M-Handler
-      mepc := io.exception.exceptionPC
-      mcause := io.exception.exceptionCode
-      mtval := io.exception.exceptionVal
-      io.exception.handlerPC := mtvec(31, 2) ## 0.U(2.W)
+      mepcReg := io.exception.exceptionPC
+      mcauseReg := io.exception.exceptionCode
+      mtvalReg := io.exception.exceptionVal
+      io.exception.handlerPC := mtvecReg(31, 2) ## 0.U(2.W)
       mstatusReg.trapToMLevel()
     }
   }
@@ -104,17 +115,19 @@ class CSRs extends Module {
   when(io.exception.xret) {
     switch(mstatusReg.privilege) {
       is(PrivilegeType.M) { // mret
-        io.exception.handlerPC := mepc
+        io.exception.handlerPC := mepcReg
         mstatusReg.returnFromM()
       }
       is(PrivilegeType.S) { // sret
-        io.exception.handlerPC := sepc
+        io.exception.handlerPC := sepcReg
         mstatusReg.returnFromS()
       }
     }
   }
 }
 
+/** MStatus registers (mstatus, mstatush, privilege)
+  */
 class MStatusRegister {
   private val mstatusReg = Reg(DataType.operation)
   private val mstatushReg = Reg(DataType.operation)
