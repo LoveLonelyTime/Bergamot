@@ -3,6 +3,8 @@ package lltriscv.core.record
 import chisel3._
 import chisel3.util._
 import lltriscv.utils.CoreUtils
+import lltriscv.core.execute.MemoryAccessLength
+import lltriscv.bus.SMAWriterIO
 
 /*
  * Store queue
@@ -28,6 +30,8 @@ class StoreQueue(depth: Int) extends Module {
     val deq = DecoupledIO(new StoreQueueDequeueEntry())
     // Retire interface
     val retire = Flipped(new StoreQueueRetireIO())
+    // Bypass interface
+    val bypass = Flipped(new StoreQueueBypassIO())
     // Recovery interface
     val recover = Input(Bool())
   })
@@ -101,6 +105,123 @@ class StoreQueue(depth: Int) extends Module {
     }
   }
 
+  // Bypass logic
+  private val laneStrobes = VecInit.fill(4)(false.B)
+  private val laneData = VecInit.fill(4)(0.U(8.W))
+
+  // Overlapping window
+  private def bypassEntry(id: Int) = {
+    when(queue(id).valid) {
+      switch(queue(id).writeType) {
+        is(MemoryAccessLength.byte) {
+          when(queue(id).address === io.bypass.address) {
+            laneStrobes(0) := true.B
+            laneData(0) := queue(id).data(7, 0)
+          }.elsewhen(queue(id).address === io.bypass.address + 1.U) {
+            laneStrobes(1) := true.B
+            laneData(1) := queue(id).data(7, 0)
+          }.elsewhen(queue(id).address === io.bypass.address + 2.U) {
+            laneStrobes(2) := true.B
+            laneData(2) := queue(id).data(7, 0)
+          }.elsewhen(queue(id).address === io.bypass.address + 3.U) {
+            laneStrobes(3) := true.B
+            laneData(3) := queue(id).data(7, 0)
+          }
+        }
+
+        is(MemoryAccessLength.half) {
+          when(queue(id).address === io.bypass.address - 1.U) {
+            laneStrobes(0) := true.B
+            laneData(0) := queue(id).data(15, 8)
+          }.elsewhen(queue(id).address === io.bypass.address) {
+            laneStrobes(0) := true.B
+            laneData(0) := queue(id).data(7, 0)
+            laneStrobes(1) := true.B
+            laneData(1) := queue(id).data(15, 8)
+          }.elsewhen(queue(id).address === io.bypass.address + 1.U) {
+            laneStrobes(1) := true.B
+            laneData(1) := queue(id).data(7, 0)
+            laneStrobes(2) := true.B
+            laneData(2) := queue(id).data(15, 8)
+          }.elsewhen(queue(id).address === io.bypass.address + 2.U) {
+            laneStrobes(2) := true.B
+            laneData(2) := queue(id).data(7, 0)
+            laneStrobes(3) := true.B
+            laneData(3) := queue(id).data(15, 8)
+          }.elsewhen(queue(id).address === io.bypass.address + 3.U) {
+            laneStrobes(3) := true.B
+            laneData(3) := queue(id).data(7, 0)
+          }
+        }
+
+        is(MemoryAccessLength.word) {
+          when(queue(id).address === io.bypass.address - 3.U) {
+            laneStrobes(0) := true.B
+            laneData(0) := queue(id).data(31, 24)
+          }.elsewhen(queue(id).address === io.bypass.address - 2.U) {
+            laneStrobes(0) := true.B
+            laneData(0) := queue(id).data(23, 16)
+            laneStrobes(1) := true.B
+            laneData(1) := queue(id).data(31, 24)
+          }.elsewhen(queue(id).address === io.bypass.address - 1.U) {
+            laneStrobes(0) := true.B
+            laneData(0) := queue(id).data(15, 8)
+            laneStrobes(1) := true.B
+            laneData(1) := queue(id).data(23, 16)
+            laneStrobes(2) := true.B
+            laneData(2) := queue(id).data(31, 24)
+          }.elsewhen(queue(id).address === io.bypass.address) {
+            laneStrobes(0) := true.B
+            laneData(0) := queue(id).data(7, 0)
+            laneStrobes(1) := true.B
+            laneData(1) := queue(id).data(15, 8)
+            laneStrobes(2) := true.B
+            laneData(2) := queue(id).data(23, 16)
+            laneStrobes(3) := true.B
+            laneData(3) := queue(id).data(31, 24)
+          }.elsewhen(queue(id).address === io.bypass.address + 1.U) {
+            laneStrobes(1) := true.B
+            laneData(1) := queue(id).data(7, 0)
+            laneStrobes(2) := true.B
+            laneData(2) := queue(id).data(15, 8)
+            laneStrobes(3) := true.B
+            laneData(3) := queue(id).data(23, 16)
+          }.elsewhen(queue(id).address === io.bypass.address + 2.U) {
+            laneStrobes(2) := true.B
+            laneData(2) := queue(id).data(7, 0)
+            laneStrobes(3) := true.B
+            laneData(3) := queue(id).data(15, 8)
+          }.elsewhen(queue(id).address === io.bypass.address + 3.U) {
+            laneStrobes(3) := true.B
+            laneData(3) := queue(id).data(7, 0)
+          }
+        }
+      }
+    }
+  }
+
+  when(readPtr <= writePtr) {
+    for (i <- 0 until depth) {
+      when(i.U >= readPtr && i.U < writePtr) {
+        bypassEntry(i)
+      }
+    }
+  }.otherwise {
+    for (i <- 0 until depth) {
+      when(i.U >= readPtr) {
+        bypassEntry(i)
+      }
+    }
+    for (i <- 0 until depth) {
+      when(i.U < writePtr) {
+        bypassEntry(i)
+      }
+    }
+  }
+
+  io.bypass.data := laneData(3) ## laneData(2) ## laneData(1) ## laneData(0)
+  io.bypass.strobe := laneStrobes(3) ## laneStrobes(2) ## laneStrobes(1) ## laneStrobes(0)
+
   // Recovery logic
   when(io.recover) {
     queue.foreach(item => {
@@ -108,5 +229,34 @@ class StoreQueue(depth: Int) extends Module {
         item.valid := false.B
       }
     })
+  }
+}
+
+/** Store queue memory writer
+  *
+  * The output port of store queue
+  */
+class StoreQueueMemoryWriter extends Module {
+  val io = IO(new Bundle {
+    // Dequeue interface
+    val deq = Flipped(DecoupledIO(new StoreQueueDequeueEntry()))
+    // SMA interface
+    val sma = new SMAWriterIO()
+  })
+
+  io.sma.valid := false.B
+  io.sma.address := io.deq.bits.address
+  io.sma.data := io.deq.bits.data
+  io.sma.writeType := io.deq.bits.writeType
+
+  io.deq.ready := false.B
+
+  when(io.deq.valid) {
+    when(io.deq.bits.valid) {
+      io.sma.valid := true.B
+      io.deq.ready := io.sma.ready
+    }.otherwise { // Skip
+      io.deq.ready := true.B
+    }
   }
 }

@@ -30,6 +30,10 @@ object ChiselUtils {
     s"b${int2BinaryString(x, 32)}".U
   }
 
+  def BigInt2Int(x: BigInt) = {
+    BinaryString2Int(x.toString(2))
+  }
+
   implicit class OperationExtension[T <: Data](x: T) {
     def in(items: T*): Bool = {
       items.foldLeft(false.B)((p, n) => {

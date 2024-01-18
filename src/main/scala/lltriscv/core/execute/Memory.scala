@@ -9,7 +9,7 @@ import lltriscv.core.DataType
 import lltriscv.core.record.TLBRequestIO
 import lltriscv.bus.SMAReaderIO
 import lltriscv.core.record.TLBErrorCode
-import lltriscv.bus.SMAWriteIO
+import lltriscv.bus.SMAWriterIO
 import lltriscv.core.record.StoreQueueAllocIO
 
 /*
@@ -363,7 +363,7 @@ class MemoryReadWriteStage extends Module {
     }
   }
 
-  io.in.ready := statusReg === Status.idle // Idle
+  io.in.ready := statusReg === Status.idle && io.out.ready // Idle
 
   // Read FSM
   io.sma.valid := false.B

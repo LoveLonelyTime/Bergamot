@@ -39,11 +39,11 @@ class SMAReaderIO extends Bundle {
   val ready = Input(Bool())
 }
 
-/** SMAWriteIO
+/** SMAWriterIO
   *
   * SMA writer interface
   */
-class SMAWriteIO extends Bundle {
+class SMAWriterIO extends Bundle {
   // Out
   val address = Output(UInt(SMASpec.addressWidth.W))
   val data = Output(UInt(SMASpec.dataWidth.W))

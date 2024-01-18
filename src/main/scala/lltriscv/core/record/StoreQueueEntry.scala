@@ -54,3 +54,11 @@ class StoreQueueEntry extends Bundle {
   val retire = Bool() // Has retired?
   val valid = Bool()
 }
+
+/** Store queue bypass interface
+  */
+class StoreQueueBypassIO extends Bundle {
+  val address = Output(DataType.address) // Physical address
+  val data = Input(DataType.operation) // Data
+  val strobe = Input(DataType.strobe) // Strobe
+}

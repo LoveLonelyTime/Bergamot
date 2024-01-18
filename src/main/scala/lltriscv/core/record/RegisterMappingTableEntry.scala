@@ -58,8 +58,7 @@ class RegisterMappingTableEntry extends Bundle {
 
 /** Register update interface
   *
-  * When an instruction retires, update the status of the core registers through
-  * this interface
+  * When an instruction retires, update the status of the core registers through this interface
   */
 class RegisterUpdateIO extends Bundle {
   val entries = Output(
@@ -67,7 +66,7 @@ class RegisterUpdateIO extends Bundle {
       2,
       new Bundle {
         val rd = DataType.register
-        val result = DataType.opcode
+        val result = DataType.operation
       }
     )
   )

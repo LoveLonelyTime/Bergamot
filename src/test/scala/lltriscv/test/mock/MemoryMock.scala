@@ -5,16 +5,18 @@ import chisel3.util._
 import lltriscv.bus.SMAReaderIO
 import chiseltest._
 import lltriscv.utils.ChiselUtils
+import java.io.File
+import java.io.FileInputStream
 
 trait MemoryMock {
   def loadByte(addr: Int): Byte
   def loadShort(addr: Int): Short =
-    ((loadByte(addr + 1).toInt << 8) | loadByte(addr).toInt).toShort
+    (((loadByte(addr + 1).toInt << 8) & 0xff00) | (loadByte(addr).toInt & 0x00ff)).toShort
   def loadInt(addr: Int): Int =
-    (loadByte(addr + 3).toInt << 24) |
-      (loadByte(addr + 2).toInt << 16) |
-      (loadByte(addr + 1).toInt << 8) |
-      loadByte(addr).toInt
+    ((loadByte(addr + 3).toInt << 24) & 0xff000000) |
+      ((loadByte(addr + 2).toInt << 16) & 0x00ff0000) |
+      ((loadByte(addr + 1).toInt << 8) & 0x0000ff00) |
+      (loadByte(addr).toInt & 0x000000ff)
 
   def storeByte(addr: Int, value: Byte): Unit
   def storeShort(addr: Int, value: Short): Unit = {
@@ -26,6 +28,21 @@ trait MemoryMock {
     storeByte(addr + 1, ((value >> 8) & 0xff).toByte)
     storeByte(addr + 2, ((value >> 16) & 0xff).toByte)
     storeByte(addr + 3, ((value >> 24) & 0xff).toByte)
+  }
+}
+
+trait MemoryFileMock extends MemoryMock {
+  def importBin(file: File, start: Int) = {
+    val in = new FileInputStream(file)
+    var by = in.read()
+    var id = 0
+    while (by != -1) {
+      storeByte(start + id, by.toByte)
+      by = in.read()
+      id = id + 1
+    }
+    in.close()
+    println(s"Import from ${file.getName()} ${id} bytes.")
   }
 }
 

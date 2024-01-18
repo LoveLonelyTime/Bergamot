@@ -35,10 +35,10 @@ class PCVerifyStage extends Module {
 
   // Pipeline logic
   private val inReg = Reg(Vec(2, new PCVerifyStageEntry()))
-  when(io.out.ready && io.out.valid) { // Stall
+  when(io.out.fire) { // Stall
     inReg.foreach(_.valid := false.B)
   }
-  when(io.in.ready && io.in.valid) { // Sample
+  when(io.in.fire) { // Sample
     inReg := io.in.bits
   }
 
@@ -58,13 +58,20 @@ class PCVerifyStage extends Module {
 
   io.out.valid := true.B // No wait
 
-  // PC logic
+  // PC next logic
   when(verify && inReg(0).valid) {
+    val nextPC = Wire(DataType.address)
     when(inReg(1).valid && inReg(0).spec === inReg(1).pc) { // 0 -> 1 -> spec
-      pcReg := inReg(1).spec
+      nextPC := inReg(1).spec
     }.otherwise { // 0 -> spec, 1 is masked
-      pcReg := inReg(0).spec
+      nextPC := inReg(0).spec
       io.out.bits(1).valid := false.B
+    }
+    // Prefetch
+    io.pc := nextPC
+
+    when(io.out.fire) {
+      pcReg := nextPC
     }
   }
 

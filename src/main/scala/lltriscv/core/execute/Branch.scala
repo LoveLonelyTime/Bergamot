@@ -148,19 +148,19 @@ class BranchExecuteStage extends Module {
   }
 
   // Compare logic
-  private val geu = WireInit(inReg.op1 > inReg.op2)
+  private val gtu = WireInit(inReg.op1 > inReg.op2)
   private val eq = WireInit(inReg.op1 === inReg.op2)
   private val ne = WireInit(!eq)
-  private val ltu = WireInit(!eq && !geu)
-  private val ge = WireInit(false.B)
+  private val ltu = WireInit(!eq && !gtu)
+  private val gt = WireInit(false.B)
   private val sign = inReg.op1(31) ## inReg.op2(31)
   switch(sign) {
-    is("b00".U) { ge := geu }
-    is("b01".U) { ge := true.B }
-    is("b10".U) { ge := false.B }
-    is("b11".U) { ge := geu }
+    is("b00".U) { gt := gtu }
+    is("b01".U) { gt := true.B }
+    is("b10".U) { gt := false.B }
+    is("b11".U) { gt := gtu }
   }
-  private val lt = WireInit(!eq && !ge)
+  private val lt = WireInit(!eq && !gt)
 
   private val addPC = WireInit(inReg.add1 + inReg.add2)
 
@@ -174,16 +174,16 @@ class BranchExecuteStage extends Module {
       io.out.bits.real := Mux(ne, addPC, inReg.next)
     }
     is(BranchOperationType.ge) {
-      io.out.bits.real := Mux(ge, addPC, inReg.next)
+      io.out.bits.real := Mux(gt || eq, addPC, inReg.next)
     }
     is(BranchOperationType.lt) {
       io.out.bits.real := Mux(lt, addPC, inReg.next)
     }
     is(BranchOperationType.geu) {
-      io.out.bits.real := Mux(geu, addPC, inReg.next)
+      io.out.bits.real := Mux(gtu || eq, addPC, inReg.next)
     }
     is(BranchOperationType.ltu) {
-      io.out.bits.real := Mux(geu, addPC, inReg.next)
+      io.out.bits.real := Mux(ltu, addPC, inReg.next)
     }
     is(BranchOperationType.jal) {
       io.out.bits.real := addPC(31, 1) ## 0.U // Reset LSB
