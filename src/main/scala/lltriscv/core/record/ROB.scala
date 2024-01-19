@@ -4,6 +4,7 @@ import chisel3._
 import chisel3.util._
 import lltriscv.core._
 import lltriscv.utils.CoreUtils
+import lltriscv.utils.ChiselUtils._
 
 /*
  * ROB (ReOrder Buffer)
@@ -46,7 +47,7 @@ class ROB(depth: Int) extends Module {
   })
 
   // Table logic
-  private val table = Reg(Vec(depth * 2, new ROBTableEntry()))
+  private val table = RegInit(Vec(depth * 2, new ROBTableEntry()).zero)
 
   // Table write logic
   when(io.tableWrite.wen) {

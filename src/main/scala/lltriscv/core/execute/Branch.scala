@@ -7,6 +7,7 @@ import lltriscv.core._
 import lltriscv.core.record._
 import lltriscv.utils.CoreUtils
 import lltriscv.core.decode.InstructionType
+import lltriscv.utils.ChiselUtils._
 
 /*
  * Branch processing unit, which is suitable for branch operations
@@ -58,7 +59,7 @@ class BranchDecodeStage extends Module {
   })
 
   // Pipeline logic
-  private val inReg = Reg(new ExecuteEntry())
+  private val inReg = RegInit(new ExecuteEntry().zero)
 
   when(io.out.fire) { // Stall
     inReg.valid := false.B
@@ -136,7 +137,7 @@ class BranchExecuteStage extends Module {
   })
 
   // Pipeline logic
-  private val inReg = Reg(new BranchExecuteStageEntry())
+  private val inReg = RegInit(new BranchExecuteStageEntry().zero)
 
   io.in.ready := io.out.ready
 

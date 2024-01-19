@@ -6,6 +6,7 @@ import chisel3.util._
 import lltriscv.core._
 import lltriscv.core.broadcast.{DataBroadcastSlotEntry, DataBroadcastIO}
 import lltriscv.utils.CoreUtils
+import lltriscv.utils.ChiselUtils._
 
 /*
  * Register mapping table
@@ -33,7 +34,7 @@ class RegisterMappingTable extends Module {
     val recover = Input(Bool())
   })
 
-  private val table = Reg(Vec(32, new RegisterMappingTableEntry()))
+  private val table = RegInit(Vec(32, new RegisterMappingTableEntry()).zero)
 
   io.mapping.ready := io.alloc.valid // Alloc valid
   io.alloc.ready := io.mapping.valid // Mapping valid

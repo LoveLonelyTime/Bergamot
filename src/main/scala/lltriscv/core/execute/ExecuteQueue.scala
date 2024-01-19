@@ -4,6 +4,7 @@ import chisel3._
 import chisel3.util._
 import lltriscv.core.broadcast.DataBroadcastIO
 import lltriscv.utils.CoreUtils
+import lltriscv.utils.ChiselUtils._
 
 /*
  * Execute queue (aka reservation station)
@@ -53,7 +54,7 @@ abstract class ExecuteQueue(depth: Int, queueType: ExecuteQueueType.Type) extend
 class InOrderedExecuteQueue(depth: Int, queueType: ExecuteQueueType.Type) extends ExecuteQueue(depth, queueType) {
 
   // Read/Wirte pointers
-  private val queue = Reg(Vec(depth, new ExecuteEntry()))
+  private val queue = RegInit(Vec(depth, new ExecuteEntry()).zero)
 
   private val incrRead = WireInit(false.B)
   private val incrWrite = WireInit(false.B)

@@ -8,6 +8,7 @@ import lltriscv.core.record.RegisterUpdateIO
 import lltriscv.core.record.CSRsWriteIO
 import lltriscv.core.record.ExceptionRequestIO
 import lltriscv.core.record.StoreQueueRetireIO
+import lltriscv.cache.FlushCacheIO
 
 /*
  * Instruction retire
@@ -43,6 +44,11 @@ class InstructionRetire(depth: Int) extends Module {
     val csr = new CSRsWriteIO()
     // Exception interface
     val exception = new ExceptionRequestIO()
+
+    // Flush interface
+    val dCacheFlush = new FlushCacheIO()
+    val iCacheFlush = new FlushCacheIO()
+    val tlbFlush = new FlushCacheIO()
   })
 
   private val retireEntries =

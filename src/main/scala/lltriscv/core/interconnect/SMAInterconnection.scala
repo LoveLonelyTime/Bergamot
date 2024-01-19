@@ -93,7 +93,7 @@ class SMA2ReaderInterconnect extends Module {
     }
   }
 
-  when(statusReg === Status.pending1) {
+  when(statusReg === Status.pending2) {
     io.out <> io.in2
 
     when(io.out.ready) {

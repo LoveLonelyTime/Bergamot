@@ -4,6 +4,7 @@ import chisel3._
 import chisel3.util._
 import lltriscv.core.DataType
 import lltriscv.core.decode.DecodeStageEntry
+import lltriscv.utils.ChiselUtils._
 
 /*
  * Instruction fetch
@@ -30,11 +31,11 @@ class PCVerifyStage extends Module {
     val recover = Input(Bool())
   })
   // PC register
-  private val pcReg = Reg(DataType.address)
+  private val pcReg = RegInit(DataType.address.zeroAsUInt)
   io.pc := pcReg
 
   // Pipeline logic
-  private val inReg = Reg(Vec(2, new PCVerifyStageEntry()))
+  private val inReg = RegInit(Vec(2, new PCVerifyStageEntry()).zero)
   when(io.out.fire) { // Stall
     inReg.foreach(_.valid := false.B)
   }

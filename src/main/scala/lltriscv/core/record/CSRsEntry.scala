@@ -23,6 +23,16 @@ object PrivilegeType extends ChiselEnum {
    * U: User-Level
    */
   val M, S, U = Value
+
+  def mcode(code: UInt) = {
+    val result = WireInit(U)
+    switch(code) {
+      is("b00".U) { result := U }
+      is("b01".U) { result := S }
+      is("b11".U) { result := M }
+    }
+    result
+  }
 }
 
 /** CSRs write intreface

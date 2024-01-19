@@ -4,14 +4,28 @@ import chisel3._
 import chisel3.util._
 import lltriscv.core.DataType
 
+/*
+ * TLB entry
+ *
+ * Copyright (C) 2024-2025 LoveLonelyTime
+ */
+
+/** TLB entry
+  */
 class TLBEntry extends Bundle {
-  val vpn = UInt(20.W)
-  val ppn = UInt(22.W)
-  val uxwr = UInt(4.W)
-  val mPage = Bool()
-  val valid = Bool()
+  val vpn = UInt(20.W) // Virtual page number
+  val ppn = UInt(22.W) // Physical page numer
+  val asid = UInt(9.W) // Address space ID
+  val uxwr = UInt(4.W) // User/Execute/Write/Read
+  val da = UInt(2.W) // Dirty/Access
+  val g = Bool() // Global
+  val v = Bool() // Valid
+  val mPage = Bool() // MiB page
+  val valid = Bool() // Entry valid
 }
 
+/** TLB error code
+  */
 object TLBErrorCode extends ChiselEnum {
   /*
    * success: Translation successful
@@ -21,32 +35,13 @@ object TLBErrorCode extends ChiselEnum {
   val success, pageFault, memoryFault = Value
 }
 
-object PTERWX {
-  val next = "b000".U
-  val r = "b001".U
-  val reservedW = "b010".U
-  val rw = "b011".U
-  val x = "b100".U
-  val rx = "b101".U
-  val reservedWX = "b110".U
-  val rwx = "b111".U
-}
-
-class TLBVAddressEntry extends Bundle {
-  val address = DataType.address
-  val write = Bool()
-}
-
-class TLBPAddressEntry extends Bundle {
-  val address = DataType.address
-  val error = TLBErrorCode()
-}
-
+/** TLB request interface
+  */
 class TLBRequestIO extends Bundle {
-  val vaddress = Output(DataType.address)
-  val write = Output(Bool())
-  val paddress = Input(DataType.address)
-  val error = Input(TLBErrorCode())
+  val vaddress = Output(DataType.address) // Virtual address
+  val write = Output(Bool()) // Store operation
+  val paddress = Input(DataType.address) // Physical address
+  val error = Input(TLBErrorCode()) // Error
   val valid = Output(Bool())
   val ready = Input(Bool())
 }

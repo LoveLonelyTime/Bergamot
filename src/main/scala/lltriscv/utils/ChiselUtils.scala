@@ -44,5 +44,9 @@ object ChiselUtils {
     def in(items: Iterable[T]): Bool = {
       this.in(items.toSeq: _*)
     }
+
+    def zero: T = 0.U.asTypeOf(x)
+
+    def zeroAsUInt: UInt = 0.U(x.getWidth.W)
   }
 }

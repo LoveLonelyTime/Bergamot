@@ -3,6 +3,7 @@ package lltriscv.core.record
 import chisel3._
 import chisel3.util._
 import lltriscv.core.DataType
+import lltriscv.utils.ChiselUtils._
 
 /*
  * CSRs (Control and Status Registers) unit, is used to save the core and machine state
@@ -28,26 +29,29 @@ class CSRs extends Module {
     val exception = Flipped(new ExceptionRequestIO())
     // Fixed CSRs output
     val privilege = Output(PrivilegeType()) // Current core privilege
+    val mstatus = Output(DataType.operation)
     val satp = Output(DataType.operation)
   })
 
   // M-Mode CSRs
   private val mstatusReg = new MStatusRegister()
-  private val mtvecReg = Reg(DataType.operation)
-  private val medelegReg = Reg(DataType.operation)
-  private val mepcReg = Reg(DataType.operation)
-  private val mcauseReg = Reg(DataType.operation)
-  private val mtvalReg = Reg(DataType.operation)
+  private val mtvecReg = RegInit(DataType.operation.zeroAsUInt)
+  private val medelegReg = RegInit(DataType.operation.zeroAsUInt)
+  private val mepcReg = RegInit(DataType.operation.zeroAsUInt)
+  private val mcauseReg = RegInit(DataType.operation.zeroAsUInt)
+  private val mtvalReg = RegInit(DataType.operation.zeroAsUInt)
 
   // S-Mode CSRs
-  private val satpReg = Reg(DataType.operation)
-  private val stvecReg = Reg(DataType.operation)
-  private val sepcReg = Reg(DataType.operation)
-  private val scauseReg = Reg(DataType.operation)
-  private val stvalReg = Reg(DataType.operation)
+  private val satpReg = RegInit(DataType.operation.zeroAsUInt)
+  private val stvecReg = RegInit(DataType.operation.zeroAsUInt)
+  private val sepcReg = RegInit(DataType.operation.zeroAsUInt)
+  private val scauseReg = RegInit(DataType.operation.zeroAsUInt)
+  private val stvalReg = RegInit(DataType.operation.zeroAsUInt)
 
+  // Fixed output
   io.satp := satpReg
   io.privilege := mstatusReg.privilege
+  io.mstatus := mstatusReg.mstatusView
 
   // Read logic
   def responseRead(content: UInt) = {
@@ -62,6 +66,8 @@ class CSRs extends Module {
     is("h141".U) { responseRead(sepcReg) } // sepc
     is("h142".U) { responseRead(scauseReg) } // scause
     is("h143".U) { responseRead(stvalReg) } // stval
+
+    is("h180".U) { responseRead(satpReg) } // satp
 
     is("h300".U) { responseRead(mstatusReg.mstatusView) } // mstatus
     is("h302".U) { responseRead(medelegReg) } // medeleg
@@ -80,6 +86,8 @@ class CSRs extends Module {
       is("h141".U) { sepcReg := io.write.data } // sepc
       is("h142".U) { scauseReg := io.write.data } // scause
       is("h143".U) { stvalReg := io.write.data } // stval
+
+      is("h180".U) { satpReg := io.write.data } // satp
 
       is("h300".U) { mstatusReg.writeMStatus(io.write.data) } // mstatus
       is("h302".U) { medelegReg := io.write.data } // medeleg
@@ -129,8 +137,8 @@ class CSRs extends Module {
 /** MStatus registers (mstatus, mstatush, privilege)
   */
 class MStatusRegister {
-  private val mstatusReg = Reg(DataType.operation)
-  private val mstatushReg = Reg(DataType.operation)
+  private val mstatusReg = RegInit(DataType.operation.zeroAsUInt)
+  private val mstatushReg = RegInit(DataType.operation.zeroAsUInt)
   private val privilegeReg = RegInit(PrivilegeType.M)
 
   def privilege = privilegeReg

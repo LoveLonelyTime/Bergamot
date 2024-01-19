@@ -6,6 +6,9 @@ import lltriscv.utils.CoreUtils
 import lltriscv.core.execute.MemoryAccessLength
 import lltriscv.bus.SMAWriterIO
 
+import lltriscv.utils.ChiselUtils._
+import lltriscv.cache.FlushCacheIO
+
 /*
  * Store queue
  *
@@ -32,12 +35,14 @@ class StoreQueue(depth: Int) extends Module {
     val retire = Flipped(new StoreQueueRetireIO())
     // Bypass interface
     val bypass = Flipped(new StoreQueueBypassIO())
+    // All retired have been dequeued
+    val flush = Flipped(new FlushCacheIO())
     // Recovery interface
     val recover = Input(Bool())
   })
 
   // Read/Wirte pointers
-  private val queue = Reg(Vec(depth, new StoreQueueEntry()))
+  private val queue = RegInit(Vec(depth, new StoreQueueEntry()).zero)
 
   private val incrRead = WireInit(false.B)
   private val incrWrite = WireInit(false.B)
@@ -95,14 +100,6 @@ class StoreQueue(depth: Int) extends Module {
     queue(writePtr).retire := false.B
 
     printf("StoreQueue: enq address = %d, data = %d, id = %d\n", io.alloc.address, io.alloc.data, writePtr)
-  }
-
-  // Retire logic
-  for (i <- 0 until 2) {
-    when(io.retire.entries(i).en) {
-      queue(io.retire.entries(i).id).retire := true.B
-      printf("StoreQueue: Retire id = %d\n", io.retire.entries(i).id)
-    }
   }
 
   // Bypass logic
@@ -219,6 +216,11 @@ class StoreQueue(depth: Int) extends Module {
     }
   }
 
+  // Empty logic
+  val retireValues = VecInit.fill(depth)(false.B)
+  for (i <- 0 until depth) retireValues(i) := queue(i).valid && queue(i).retire
+  io.flush.empty := !retireValues.reduceTree(_ && _)
+
   io.bypass.data := laneData(3) ## laneData(2) ## laneData(1) ## laneData(0)
   io.bypass.strobe := laneStrobes(3) ## laneStrobes(2) ## laneStrobes(1) ## laneStrobes(0)
 
@@ -230,6 +232,16 @@ class StoreQueue(depth: Int) extends Module {
       }
     })
   }
+
+  // Retire logic
+  for (i <- 0 until 2) {
+    when(io.retire.entries(i).en) {
+      queue(io.retire.entries(i).id).retire := true.B
+      queue(io.retire.entries(i).id).valid := true.B // Recovery bypass
+      printf("StoreQueue: Retire id = %d\n", io.retire.entries(i).id)
+    }
+  }
+
 }
 
 /** Store queue memory writer

@@ -78,6 +78,11 @@ class ExecuteResultEntry extends Bundle {
   // XReturn field
   val xret = Bool()
 
+  // Fence field
+  // val fenceWrite = Bool()
+  // val flushICache = Bool()
+  // val flushTLB = Bool()
+
   val rd = DataType.receipt // Destination receipt
   val pc = DataType.address // Corresponding PC
   val next = DataType.address // Next PC

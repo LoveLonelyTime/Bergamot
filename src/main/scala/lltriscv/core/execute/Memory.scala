@@ -29,7 +29,7 @@ class Memory extends Module {
     val out = DecoupledIO(new ExecuteResultEntry())
 
     // DTLB interface
-    // val dtlb = new TLBRequestIO()
+    val dtlb = new TLBRequestIO()
     // SMA interface
     val sma = new SMAReaderIO()
     // Store queue interface
@@ -41,7 +41,7 @@ class Memory extends Module {
 
   private val memoryDecodeStage = Module(new MemoryDecodeStage())
   private val memoryExecuteStage = Module(new MemoryExecuteStage())
-  private val memoryTLBStage = Module(new MemoryNoTLBStage())
+  private val memoryTLBStage = Module(new MemoryTLBStage())
   private val memoryReadWriteStage = Module(new MemoryReadWriteStage())
 
   io.in <> memoryDecodeStage.io.in
@@ -50,7 +50,7 @@ class Memory extends Module {
   memoryTLBStage.io.out <> memoryReadWriteStage.io.in
   memoryReadWriteStage.io.out <> io.out
 
-  // memoryTLBStage.io.dtlb <> io.dtlb
+  memoryTLBStage.io.dtlb <> io.dtlb
   memoryReadWriteStage.io.sma <> io.sma
   memoryReadWriteStage.io.alloc <> io.alloc
 
@@ -76,7 +76,7 @@ class MemoryDecodeStage extends Module {
     val recover = Input(Bool())
   })
   // Pipeline logic
-  private val inReg = Reg(new ExecuteEntry())
+  private val inReg = RegInit(new ExecuteEntry().zero)
 
   when(io.out.fire) { // Stall
     inReg.valid := false.B
@@ -151,7 +151,7 @@ class MemoryExecuteStage extends Module {
     val recover = Input(Bool())
   })
   // Pipeline logic
-  private val inReg = Reg(new MemoryExecuteStageEntry())
+  private val inReg = RegInit(new MemoryExecuteStageEntry().zero)
 
   when(io.out.fire) { // Stall
     inReg.valid := false.B
@@ -202,7 +202,7 @@ class MemoryNoTLBStage extends Module {
     val recover = Input(Bool())
   })
 
-  private val inReg = Reg(new MemoryTLBStageEntry())
+  private val inReg = RegInit(new MemoryTLBStageEntry().zero)
 
   when(io.out.ready && io.out.valid) { // Stall
     inReg.valid := false.B
@@ -250,15 +250,15 @@ class MemoryTLBStage extends Module {
     // Recovery interface
     val recover = Input(Bool())
   })
-  private val statusReg = Reg(Status.idle)
+  private val statusReg = RegInit(Status.idle)
   private object Status extends ChiselEnum {
     val idle, request = Value
   }
 
   // Pipeline logic
-  private val inReg = Reg(new MemoryTLBStageEntry())
-  private val error = Reg(MemoryErrorCode())
-  private val paddress = Reg(DataType.address)
+  private val inReg = RegInit(new MemoryTLBStageEntry().zero)
+  private val error = RegInit(MemoryErrorCode().zero)
+  private val paddress = RegInit(DataType.address.zeroAsUInt)
 
   when(io.out.fire) { // Stall
     inReg.valid := false.B
@@ -281,7 +281,7 @@ class MemoryTLBStage extends Module {
     io.dtlb.valid := true.B
     io.dtlb.vaddress := inReg.vaddress
     io.dtlb.write := (inReg.op in MemoryOperationType.writeValues)
-    when(io.dtlb.valid && io.dtlb.ready) {
+    when(io.dtlb.ready) {
       switch(io.dtlb.error) {
         is(TLBErrorCode.success) { error := MemoryErrorCode.none }
         is(TLBErrorCode.pageFault) { error := MemoryErrorCode.pageFault }
@@ -342,10 +342,10 @@ class MemoryReadWriteStage extends Module {
   }
 
   // Pipeline logic
-  private val inReg = Reg(new MemoryReadWriteStageEntry())
-  private val readResult = Reg(DataType.operation)
+  private val inReg = RegInit(new MemoryReadWriteStageEntry().zero)
+  private val readResult = RegInit(DataType.operation.zeroAsUInt)
   private val readError = RegInit(false.B)
-  private val allocID = Reg(DataType.receipt)
+  private val allocID = RegInit(DataType.receipt.zeroAsUInt)
   io.in.ready := statusReg === Status.idle && io.out.ready // Idle
 
   when(io.out.fire) { // Stall

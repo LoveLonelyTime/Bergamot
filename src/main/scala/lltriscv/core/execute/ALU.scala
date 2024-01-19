@@ -69,7 +69,7 @@ class ALUDecodeStage extends Module {
     val recover = Input(Bool())
   })
   // Pipeline logic
-  private val inReg = Reg(new ExecuteEntry())
+  private val inReg = RegInit(new ExecuteEntry().zero)
 
   when(io.out.fire) { // Stall
     inReg.valid := false.B
@@ -197,7 +197,7 @@ class ALUDecodeStage extends Module {
     }
 
   }.elsewhen(inReg.instructionType === InstructionType.U) { // lui / auipc
-    io.out.bits.op1 := Mux(inReg.func7(5) === 0.U, inReg.pc, 0.U)
+    io.out.bits.op1 := Mux(inReg.opcode(5), 0.U, inReg.pc)
     io.out.bits.op2 := inReg.imm // Upper
   }
 
@@ -232,7 +232,7 @@ class ALUExecuteStage extends Module {
     val recover = Input(Bool())
   })
   // Pipeline logic
-  private val inReg = Reg(new ALUExecuteStageEntry())
+  private val inReg = RegInit(new ALUExecuteStageEntry().zero)
 
   io.in.ready := io.out.ready
 

@@ -24,6 +24,7 @@ import lltriscv.bus.SMAWriterIO
 import lltriscv.test.mock.FlatMemoryMock
 import lltriscv.test.mock.MemoryFileMock
 import lltriscv.utils.ChiselUtils
+import lltriscv.core.interconnect.SMA2ReaderInterconnect
 
 class CoreTest extends Module {
   val io = IO(new Bundle {
@@ -59,6 +60,10 @@ class CoreTest extends Module {
   private val storeQueue = Module(new StoreQueue(8))
   private val storeQueueMemoryWriter = Module(new StoreQueueMemoryWriter())
   private val smaWithStoreQueueInterconnect = Module(new SMAWithStoreQueueInterconnect())
+
+  private val dataTLB = Module(new DataTLB(8))
+
+  private val sma2ReaderInterconnect = Module(new SMA2ReaderInterconnect())
 
   fetcher.io.in <> io.in
   io.pc := fetcher.io.pc
@@ -118,27 +123,35 @@ class CoreTest extends Module {
   memory.io.sma <> smaWithStoreQueueInterconnect.io.in
   smaWithStoreQueueInterconnect.io.bypass <> storeQueue.io.bypass
 
-  smaWithStoreQueueInterconnect.io.out <> io.smaReader
+  smaWithStoreQueueInterconnect.io.out <> sma2ReaderInterconnect.io.in2
 
   storeQueueMemoryWriter.io.deq <> storeQueue.io.deq
   storeQueueMemoryWriter.io.sma <> io.smaWriter
+
+  dataTLB.io.mstatus := csr.io.mstatus
+  dataTLB.io.privilege := csr.io.privilege
+  dataTLB.io.satp := csr.io.satp
+  dataTLB.io.sma <> sma2ReaderInterconnect.io.in1
+
+  memory.io.dtlb <> dataTLB.io.request
+
+  sma2ReaderInterconnect.io.out <> io.smaReader
 }
 
 class RegisterMappingTableTest extends AnyFreeSpec with ChiselScalatestTester {
-  // "Print verilog" in {
-  //   emitVerilog(new CoreTest(), Array("--target-dir", "generated"))
-  // }
+  "Print verilog" in {
+    emitVerilog(new CoreTest(), Array("--target-dir", "generated"))
+  }
 
   "RegisterMappingTable should be OK" in {
     test(new CoreTest()).withAnnotations(
       Seq(WriteVcdAnnotation, VerilatorBackendAnnotation)
     ) { dut =>
-      val memory = new FlatMemoryMock(1024) with MemoryFileMock
+      val memory = new FlatMemoryMock(4096 * 4) with MemoryFileMock
       memory.importBin(new File("test.bin"), 0)
 
-      println(memory.loadInt(0))
-      for (j <- 0 to 1000) {
-        println(j)
+      var run = true
+      while (run) {
         for (i <- 0 until 2) {
           dut.io.in
             .bits(i)
@@ -182,8 +195,8 @@ class RegisterMappingTableTest extends AnyFreeSpec with ChiselScalatestTester {
           }
 
           if (dut.io.smaReader.readType.peek() == MemoryAccessLength.word) {
-            val addr = dut.io.smaReader.address.peekInt()
-            println(s"Reader addr: ${addr}")
+            val addr = dut.io.smaReader.address.peekInt().toInt
+            println(s"Reader addr: ${addr}, data: ${memory.loadInt(addr)}")
             dut.io.smaReader.data.poke(ChiselUtils.int2UInt(memory.loadInt(dut.io.smaReader.address.peekInt().toInt)))
           }
         } else if (dut.io.smaWriter.valid.peekBoolean()) {
@@ -198,6 +211,9 @@ class RegisterMappingTableTest extends AnyFreeSpec with ChiselScalatestTester {
           }
 
           if (dut.io.smaWriter.writeType.peek() == MemoryAccessLength.word) {
+            val addr = dut.io.smaWriter.address.peekInt().toInt
+            println(s"Writer addr: ${addr}, data: ${dut.io.smaWriter.data.peekInt()}")
+            if (dut.io.smaWriter.address.peekInt().toInt == 12412) { run = false }
             memory.storeInt(dut.io.smaWriter.address.peekInt().toInt, ChiselUtils.BigInt2Int(dut.io.smaWriter.data.peekInt()))
           }
         }

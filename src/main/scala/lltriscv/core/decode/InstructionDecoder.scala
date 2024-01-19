@@ -77,7 +77,7 @@ class DecodeStage extends Module {
     val recover = Input(Bool())
   })
   // Pipeline logic
-  private val inReg = Reg(Vec(2, new DecodeStageEntry()))
+  private val inReg = RegInit(Vec(2, new DecodeStageEntry()).zero)
 
   io.in.ready := io.out.ready
   when(io.out.fire) { // Stall
@@ -270,7 +270,7 @@ class RegisterMappingStage extends Module {
   })
 
   // Pipeline logic
-  private val inReg = Reg(Vec(2, new RegisterMappingStageEntry()))
+  private val inReg = RegInit(Vec(2, new RegisterMappingStageEntry()).zero)
 
   // Waiting for mapping
   io.in.ready := io.mapping.ready && io.out.ready
@@ -370,7 +370,7 @@ class IssueStage(executeQueueWidth: Int) extends Module {
     val recover = Input(Bool())
   })
 
-  private val inReg = Reg(Vec(2, new IssueStageEntry()))
+  private val inReg = RegInit(Vec(2, new IssueStageEntry()).zero)
 
   // Broadcast logic
   for (
