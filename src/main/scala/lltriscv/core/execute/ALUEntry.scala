@@ -45,8 +45,12 @@ object ALUOperationType extends ChiselEnum {
    * Privilege switch operation:
    * - env: Trigger environment call trap (exception)
    * - xret: Environment call return
+   *
+   * Fence operation:
+   * - fence: Memory fence
+   * - fencei: Instruction memory fence
    */
-  val none, undefined, add, sub, and, or, xor, sll, srl, sra, slt, sltu, csrrw, csrrs, csrrc, env, xret = Value
+  val none, undefined, add, sub, and, or, xor, sll, srl, sra, slt, sltu, csrrw, csrrs, csrrc, env, xret, fence, fencei = Value
 }
 
 /** ALU execute stage entry

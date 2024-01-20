@@ -470,6 +470,8 @@ class MemoryReadWriteStage extends Module {
     }
   }
 
+  io.out.bits.noFlush()
+
   // rd & pc & valid
   io.out.bits.rd := inReg.rd
   io.out.bits.pc := inReg.pc

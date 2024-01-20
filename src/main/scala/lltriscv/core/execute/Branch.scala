@@ -200,6 +200,7 @@ class BranchExecuteStage extends Module {
   io.out.bits.noMemory()
   // CSR
   io.out.bits.noCSR()
+  io.out.bits.noFlush()
 
   // rd & pc & valid
   io.out.bits.rd := inReg.rd

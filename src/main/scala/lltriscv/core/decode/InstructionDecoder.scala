@@ -135,6 +135,10 @@ class DecodeStage extends Module {
       is("b11100".U) {
         instructionType := InstructionType.I
       }
+      // I: fence, fence.i
+      is("b00011".U) {
+        instructionType := InstructionType.I
+      }
     }
     io.out.bits(i).instructionType := instructionType
 

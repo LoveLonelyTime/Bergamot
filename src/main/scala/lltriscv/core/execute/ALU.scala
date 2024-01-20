@@ -156,6 +156,8 @@ class ALUDecodeStage extends Module {
         io.out.bits.op := ALUOperationType.csrrc
       }
     }
+  }.elsewhen(inReg.opcode(6, 2) === "b00011".U) { // fence, fence.i
+    io.out.bits.op := Mux(inReg.func3(0), ALUOperationType.fencei, ALUOperationType.fence)
   }
 
   // op1 & op2 & csr
@@ -248,6 +250,7 @@ class ALUExecuteStage extends Module {
   io.out.bits.result := 0.U
   io.out.bits.noCSR()
   io.out.bits.noException()
+  io.out.bits.noFlush()
   io.out.bits.xret := false.B
   switch(inReg.op) {
     is(ALUOperationType.add) {
@@ -322,6 +325,17 @@ class ALUExecuteStage extends Module {
           io.out.bits.triggerException(ExceptionCode.illegalInstruction)
         }
       }
+    }
+
+    is(ALUOperationType.fence) {
+      when(inReg.op2(4) || inReg.op2(6)) { // PO/PW
+        io.out.bits.flushDCache := true.B
+      }
+    }
+
+    is(ALUOperationType.fencei) {
+      io.out.bits.flushDCache := true.B
+      io.out.bits.flushICache := true.B
     }
   }
 

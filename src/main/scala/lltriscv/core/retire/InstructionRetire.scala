@@ -51,13 +51,21 @@ class InstructionRetire(depth: Int) extends Module {
     val tlbFlush = new FlushCacheIO()
   })
 
+  private object Status extends ChiselEnum {
+    val retire, dcache, icache, tlb = Value
+  }
+
+  private val statusReg = RegInit(Status.retire)
+
+  private val flushID = RegInit(0.U)
+
   private val retireEntries =
-    List(
+    VecInit(
       io.tableRetire.entries(io.retired.bits(30, 0) ## 0.U),
       io.tableRetire.entries(io.retired.bits(30, 0) ## 1.U)
     )
 
-  private val retireValid = List(
+  private val retireValid = VecInit(
     retireEntries(0).commit ||
       !retireEntries(0).valid,
     retireEntries(1).commit ||
@@ -84,6 +92,10 @@ class InstructionRetire(depth: Int) extends Module {
   io.exception.exceptionVal := 0.U
   io.exception.exceptionCode := 0.U
 
+  io.dCacheFlush.req := false.B
+  io.iCacheFlush.req := false.B
+  io.tlbFlush.req := false.B
+
   private def gotoExceptionHandler(id: Int) = {
     io.recover := true.B
 
@@ -92,12 +104,16 @@ class InstructionRetire(depth: Int) extends Module {
     io.exception.exceptionVal := 0.U
     io.exception.exceptionCode := retireEntries(id).executeResult.exceptionCode
     io.correctPC := io.exception.handlerPC
+
+    io.retired.ready := true.B
     printf("Exception!!!! pc = %d\n", retireEntries(id).pc)
   }
 
   private def gotoRecoveryPath(id: Int) = {
     io.recover := true.B
     io.correctPC := retireEntries(id).executeResult.real
+
+    io.retired.ready := true.B
     printf(
       "spec violate!!!: pc = %d, sepc = %d, real = %d\n",
       retireEntries(id).pc,
@@ -111,6 +127,8 @@ class InstructionRetire(depth: Int) extends Module {
     io.recover := true.B
     io.correctPC := io.exception.handlerPC
 
+    io.retired.ready := true.B
+
     printf(
       "xret !!!: pc = %d\n",
       retireEntries(id).pc
@@ -120,6 +138,8 @@ class InstructionRetire(depth: Int) extends Module {
   private def gotoCSRPath(id: Int) = {
     io.recover := true.B
     io.correctPC := retireEntries(id).executeResult.real
+
+    io.retired.ready := true.B
   }
 
   private def hasException(id: Int) = retireEntries(id).valid && retireEntries(id).executeResult.exception
@@ -127,6 +147,7 @@ class InstructionRetire(depth: Int) extends Module {
 
   private def hasCSR(id: Int) = retireEntries(id).valid && retireEntries(id).executeResult.writeCSR
   private def hasXRet(id: Int) = retireEntries(id).valid && retireEntries(id).executeResult.xret
+  private def hasFlush(id: Int) = retireEntries(id).valid && (retireEntries(id).executeResult.flushDCache || retireEntries(id).executeResult.flushICache || retireEntries(id).executeResult.flushTLB)
 
   private def updateRegister(id: Int) = {
     io.update.entries(id).rd := retireEntries(id).rd
@@ -154,45 +175,94 @@ class InstructionRetire(depth: Int) extends Module {
   }
 
   io.retired.ready := false.B
-  when(io.retired.valid && retireValid(0) && retireValid(1)) {
-    io.retired.ready := true.B
-
-    when(hasException(0)) { // Exception ?
-      gotoExceptionHandler(0)
-    }.elsewhen(hasXRet(0)) { // XRet ?
-      gotoXRetPath(0)
-    }.elsewhen(hasCSR(0)) { // CSR ?
-      writeCSRs(0)
-      updateRegister(0)
-      retireStoreQueue(0)
-      gotoCSRPath(0)
-    }.elsewhen(hasBranch(0)) { // Branch ?
-      updateRegister(0)
-      retireStoreQueue(0)
-      gotoRecoveryPath(0)
-    }.otherwise { // Normal 0
-      when(retireEntries(0).valid) {
+  when(statusReg === Status.retire) {
+    when(io.retired.valid && retireValid(0) && retireValid(1)) {
+      when(hasException(0)) { // Exception ?
+        gotoExceptionHandler(0)
+      }.elsewhen(hasXRet(0)) { // XRet ?
+        gotoXRetPath(0)
+      }.elsewhen(hasCSR(0)) { // CSR ?
+        writeCSRs(0)
         updateRegister(0)
-        retireStoreQueue(0)
-      }
+        gotoCSRPath(0)
+      }.elsewhen(hasBranch(0)) { // Branch ?
+        updateRegister(0)
+        gotoRecoveryPath(0)
+      }.elsewhen(hasFlush(0)) { // Flush ?
+        statusReg := Status.dcache
+        flushID := 0.U
+      }.otherwise { // Normal 0
+        when(retireEntries(0).valid) {
+          updateRegister(0)
+          retireStoreQueue(0)
+        }
 
-      when(hasException(1)) { // Exception ?
-        gotoExceptionHandler(1)
-      }.elsewhen(hasXRet(1)) { // XRet ?
-        gotoXRetPath(1)
-      }.elsewhen(hasCSR(1)) { // CSR ?
-        writeCSRs(1)
-        updateRegister(1)
-        retireStoreQueue(1)
-        gotoCSRPath(1)
-      }.elsewhen(hasBranch(1)) { // Branch ?
-        updateRegister(1)
-        retireStoreQueue(1)
-        gotoRecoveryPath(1)
-      }.elsewhen(retireEntries(1).valid) { // Normal 1
-        updateRegister(1)
-        retireStoreQueue(1)
+        when(hasException(1)) { // Exception ?
+          gotoExceptionHandler(1)
+        }.elsewhen(hasXRet(1)) { // XRet ?
+          gotoXRetPath(1)
+        }.elsewhen(hasCSR(1)) { // CSR ?
+          writeCSRs(1)
+          updateRegister(1)
+          gotoCSRPath(1)
+        }.elsewhen(hasBranch(1)) { // Branch ?
+          updateRegister(1)
+          gotoRecoveryPath(1)
+        }.elsewhen(hasFlush(1)) { // Flush ?
+          statusReg := Status.dcache
+          flushID := 1.U
+        }.otherwise { // Normal 1
+          when(retireEntries(1).valid) {
+            updateRegister(1)
+            retireStoreQueue(1)
+          }
+          io.retired.ready := true.B
+        }
       }
+    }
+  }
+
+  when(statusReg === Status.dcache) {
+    when(retireEntries(flushID).executeResult.flushDCache) {
+      io.dCacheFlush.req := true.B
+
+      when(io.dCacheFlush.empty) { // Finish
+        statusReg := Status.icache
+      }
+    }.otherwise {
+      statusReg := Status.icache
+    }
+  }
+
+  when(statusReg === Status.icache) {
+    when(retireEntries(flushID).executeResult.flushICache) {
+      io.iCacheFlush.req := true.B
+
+      when(io.iCacheFlush.empty) { // Finish
+        statusReg := Status.tlb
+      }
+    }.otherwise {
+      statusReg := Status.tlb
+    }
+  }
+
+  when(statusReg === Status.tlb) {
+    when(retireEntries(flushID).executeResult.flushTLB) {
+      io.tlbFlush.req := true.B
+
+      when(io.tlbFlush.empty) { // Finish
+        statusReg := Status.retire
+        printf("Fench pc = %d\n", retireEntries(flushID).pc)
+        io.recover := true.B
+        io.correctPC := retireEntries(flushID).executeResult.real
+        io.retired.ready := true.B
+      }
+    }.otherwise {
+      statusReg := Status.retire
+      printf("Fench pc = %d\n", retireEntries(flushID).pc)
+      io.recover := true.B
+      io.correctPC := retireEntries(flushID).executeResult.real
+      io.retired.ready := true.B
     }
   }
 }

@@ -79,9 +79,9 @@ class ExecuteResultEntry extends Bundle {
   val xret = Bool()
 
   // Fence field
-  // val fenceWrite = Bool()
-  // val flushICache = Bool()
-  // val flushTLB = Bool()
+  val flushDCache = Bool()
+  val flushICache = Bool()
+  val flushTLB = Bool()
 
   val rd = DataType.receipt // Destination receipt
   val pc = DataType.address // Corresponding PC
@@ -122,11 +122,18 @@ class ExecuteResultEntry extends Bundle {
     writeID := id
   }
 
+  def noFlush() = {
+    flushDCache := false.B
+    flushICache := false.B
+    flushTLB := false.B
+  }
+
   def noResult() = {
     result := 0.U
     noException()
     noCSR()
     noMemory()
+    noFlush()
     xret := false.B
     rd := 0.U
     pc := 0.U
