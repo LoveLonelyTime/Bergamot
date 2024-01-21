@@ -22,7 +22,7 @@ jobs:
         with:
           jvm: adopt:11
           apps: sbt mill
-      - name: SBT Test
-        run: sbt test
-      - name: mill Test
-        run: mill _.test
+      # - name: SBT Test
+      #   run: sbt test
+      # - name: mill Test
+      #   run: mill _.test

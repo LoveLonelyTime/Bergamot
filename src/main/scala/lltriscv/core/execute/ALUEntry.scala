@@ -4,6 +4,7 @@ import chisel3._
 import chisel3.util._
 
 import lltriscv.core._
+import lltriscv.core.fetch.ICacheLineWorkErrorCode
 
 /*
  * ALU entry
@@ -63,6 +64,7 @@ class ALUExecuteStageEntry extends Bundle {
   val op2 = DataType.operation // Operand 2
   val rd = DataType.receipt // Destination receipt
   val csrAddress = DataType.csr // CSR address
+  val error = ICacheLineWorkErrorCode() // Error
   val csrError = Bool() // CSR error
   val pc = DataType.address // Corresponding PC
   val next = DataType.address // Next PC

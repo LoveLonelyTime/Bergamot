@@ -24,4 +24,5 @@ object DataType {
   def csr = UInt(12.W) // 12-bits CSR address
   def exceptionCode = UInt(5.W) // 4-bits exception code
   def strobe = UInt(4.W) // 4-bits for 32-bits(4-lanes) strobe
+  def asid = UInt(9.W) // 9-bits address space ID
 }

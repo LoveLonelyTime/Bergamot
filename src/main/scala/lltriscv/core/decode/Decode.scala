@@ -9,6 +9,7 @@ import lltriscv.core.execute._
 import lltriscv.utils.CoreUtils
 import lltriscv.utils.ChiselUtils._
 import lltriscv.core.broadcast.DataBroadcastIO
+import lltriscv.core.fetch.ICacheLineWorkErrorCode
 
 /*
  * Decode stage
@@ -23,7 +24,7 @@ import lltriscv.core.broadcast.DataBroadcastIO
   * @param executeQueueWidth
   *   Execute queue width
   */
-class InstructionDecoder(executeQueueWidth: Int) extends Module {
+class Decode(executeQueueWidth: Int) extends Module {
   require(executeQueueWidth > 0, "Execute queue depth must be greater than 0")
 
   val io = IO(new Bundle {
@@ -221,7 +222,9 @@ class DecodeStage extends Module {
     }
 
     // Execute queue arbitration
-    when(
+    when(io.out.bits(i).error =/= ICacheLineWorkErrorCode.none) {
+      io.out.bits(i).executeQueue := ExecuteQueueType.alu
+    }.elsewhen(
       (io.out.bits(i).opcode(6, 2) in (
         "b11011".U, // jal
         "b11001".U // jalr
@@ -242,6 +245,7 @@ class DecodeStage extends Module {
     io.out.bits(i).pc := inReg(i).pc
     io.out.bits(i).next := inReg(i).next
     io.out.bits(i).spec := inReg(i).spec
+    io.out.bits(i).error := inReg(i).error
     io.out.bits(i).valid := inReg(i).valid
   }
 
@@ -290,19 +294,19 @@ class RegisterMappingStage extends Module {
   for (i <- 0 until 2) {
     // rs1
     io.mapping.regGroup(i).rs1 := Mux(
-      inReg(i).valid,
+      inReg(i).valid && inReg(i).error === ICacheLineWorkErrorCode.none,
       inReg(i).rs1,
       0.U // Bypass
     )
     // rs2
     io.mapping.regGroup(i).rs2 := Mux(
-      inReg(i).valid,
+      inReg(i).valid && inReg(i).error === ICacheLineWorkErrorCode.none,
       inReg(i).rs2,
       0.U // Bypass
     )
     // rd
     io.mapping.regGroup(i).rd := Mux(
-      inReg(i).valid,
+      inReg(i).valid && inReg(i).error === ICacheLineWorkErrorCode.none,
       inReg(i).rd,
       0.U // Bypass
     )
@@ -326,6 +330,7 @@ class RegisterMappingStage extends Module {
 
     io.out.bits(i).pc := inReg(i).pc
     io.out.bits(i).next := inReg(i).next
+    io.out.bits(i).error := inReg(i).error
     io.out.bits(i).valid := inReg(i).valid
 
     // Write ROB table
@@ -456,6 +461,7 @@ class IssueStage(executeQueueWidth: Int) extends Module {
       io.enqs(j).enq.bits.zimm := inReg(i).zimm
       io.enqs(j).enq.bits.pc := inReg(i).pc
       io.enqs(j).enq.bits.next := inReg(i).next
+      io.enqs(j).enq.bits.error := inReg(i).error
       io.enqs(j).enq.bits.valid := inReg(i).valid
     }
   }

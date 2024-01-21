@@ -8,6 +8,7 @@ import lltriscv.core.record._
 import lltriscv.utils.CoreUtils
 import lltriscv.utils.ChiselUtils._
 import lltriscv.core.decode.InstructionType
+import lltriscv.core.fetch.ICacheLineWorkErrorCode
 
 /*
  * ALU (Arithmetic and Logic Unit), which is suitable for integer operations
@@ -208,6 +209,7 @@ class ALUDecodeStage extends Module {
   io.out.bits.pc := inReg.pc
   io.out.bits.next := inReg.next
   io.out.bits.valid := inReg.valid
+  io.out.bits.error := inReg.error
 
   io.out.valid := true.B // No wait
 
@@ -337,6 +339,13 @@ class ALUExecuteStage extends Module {
       io.out.bits.flushDCache := true.B
       io.out.bits.flushICache := true.B
     }
+  }
+
+  // ICacheLine error
+  when(inReg.error === ICacheLineWorkErrorCode.memoryFault) {
+    io.out.bits.triggerException(ExceptionCode.instructionAccessFault)
+  }.elsewhen(inReg.error === ICacheLineWorkErrorCode.pageFault) {
+    io.out.bits.triggerException(ExceptionCode.instructionPageFault)
   }
 
   // CSR Error

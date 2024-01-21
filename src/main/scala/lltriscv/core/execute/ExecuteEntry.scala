@@ -5,6 +5,7 @@ import chisel3.util._
 import lltriscv.core._
 import lltriscv.core.decode._
 import lltriscv.core.broadcast.DataBroadcastSlotEntry
+import lltriscv.core.fetch.ICacheLineWorkErrorCode
 
 /*
  * Execute entry
@@ -28,6 +29,7 @@ class ExecuteEntry extends Bundle {
   val zimm = DataType.zimmediate // CSR zimm
   val pc = DataType.address // Corresponding PC
   val next = DataType.address // Next PC
+  val error = ICacheLineWorkErrorCode() // Error
   val valid = Bool() // Validity
 }
 

@@ -19,14 +19,16 @@ import lltriscv.cache.FlushCacheIO
  * Copyright (C) 2024-2025 LoveLonelyTime
  */
 
-/** DataTLB
+/** TLB
   *
-  * TLB for accessing to data (load/store)
+  * TLB for accessing to data (load/store) and TLB for accessing to instruction (fetch)
   *
   * @param depth
   *   TLB depth
+  * @param data
+  *   Data TLB or instruction TLB
   */
-class DataTLB(depth: Int) extends Module {
+class TLB(depth: Int, data: Boolean) extends Module {
   val io = IO(new Bundle {
     // Request interface
     val request = Flipped(new TLBRequestIO())
@@ -159,7 +161,9 @@ class DataTLB(depth: Int) extends Module {
     val x = uxwr(2)
     val u = uxwr(3)
 
-    val xwrResult = Mux(io.request.write, r && w, r)
+    // When this is a data TLB, check r/w.
+    // Otherwise, an instruction TLB checking x.
+    val xwrResult = if (data) Mux(io.request.write, r && w, r) else x
     val suResult = WireInit(false.B)
 
     // Check S/U
