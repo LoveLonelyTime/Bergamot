@@ -24,7 +24,6 @@ object MemoryOperationType extends ChiselEnum {
    * - sb: store byte
    * - sh: store half word
    * - sw: store word
-   *
    */
   val none, undefined, lb, lh, lw, lbu, lhu, sb, sh, sw = Value
 

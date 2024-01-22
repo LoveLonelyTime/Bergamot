@@ -9,17 +9,16 @@ import lltriscv.core.execute._
 import lltriscv.utils.CoreUtils
 import lltriscv.utils.ChiselUtils._
 import lltriscv.core.broadcast.DataBroadcastIO
-import lltriscv.core.fetch.ICacheLineWorkErrorCode
 
 /*
- * Decode stage
+ * Decode components
  *
  * Copyright (C) 2024-2025 LoveLonelyTime
  */
 
-/** Instruction decoder
+/** Instruction decode
   *
-  * The instruction decoding stage is divided into three cycles: DecodeStage -> RegisterMappingStage -> IssueStage
+  * The instruction decoding stage is divided into three cycles: DecodeStage -> RegisterMappingStage -> IssueStage.
   *
   * @param executeQueueWidth
   *   Execute queue width
@@ -37,7 +36,6 @@ class Decode(executeQueueWidth: Int) extends Module {
     val enqs = Vec(executeQueueWidth, new ExecuteQueueEnqueueIO())
     // ROB table write interface
     val tableWrite = new ROBTableWriteIO()
-
     // Recovery interface
     val recover = Input(Bool())
   })
@@ -73,7 +71,6 @@ class DecodeStage extends Module {
     // Pipeline interface
     val in = Flipped(DecoupledIO(Vec(2, new DecodeStageEntry())))
     val out = DecoupledIO(Vec(2, new RegisterMappingStageEntry()))
-
     // Recovery interface
     val recover = Input(Bool())
   })
@@ -113,6 +110,7 @@ class DecodeStage extends Module {
         instructionType := InstructionType.S
       }
       // I: add, sub, sll, slt, sltu, xor, srl, sra, or, and
+      // M: mul, mulh, mulhsu, mulhu, div, divu, rem, remu
       is("b01100".U) {
         instructionType := InstructionType.R
       }
@@ -132,11 +130,15 @@ class DecodeStage extends Module {
       is("b11001".U) {
         instructionType := InstructionType.I
       }
-      // I: csrrw, csrrs, csrrc, csrrwi, csrrsi, csrrci, ecall, ebreak, mret, sret
+      // Zicsr: csrrw, csrrs, csrrc, csrrwi, csrrsi, csrrci
+      // I: ecall, ebreak
+      // M-Level: mret
+      // S-Level: sret
       is("b11100".U) {
         instructionType := InstructionType.I
       }
-      // I: fence, fence.i
+      // I: fence
+      // Zifencei: fence.i
       is("b00011".U) {
         instructionType := InstructionType.I
       }
@@ -144,7 +146,7 @@ class DecodeStage extends Module {
     io.out.bits(i).instructionType := instructionType
 
     // rs1Tozimm
-    val rs1Tozimm = inReg(i).instruction(6, 2) === "b11100".U && inReg(i).instruction(14) === 1.U
+    val rs1Tozimm = inReg(i).instruction(6, 2) === "b11100".U && inReg(i).instruction(14)
 
     // rd: R/I/U/J
     when(instructionType in (InstructionType.R, InstructionType.I, InstructionType.U, InstructionType.J)) {
@@ -155,13 +157,8 @@ class DecodeStage extends Module {
 
     // rs1(zimm): R/I/S/B
     when(instructionType in (InstructionType.R, InstructionType.I, InstructionType.S, InstructionType.B)) {
-      when(rs1Tozimm) {
-        io.out.bits(i).zimm := inReg(i).instruction(19, 15)
-        io.out.bits(i).rs1 := 0.U
-      }.otherwise {
-        io.out.bits(i).zimm := 0.U
-        io.out.bits(i).rs1 := inReg(i).instruction(19, 15)
-      }
+      io.out.bits(i).zimm := Mux(rs1Tozimm, inReg(i).instruction(19, 15), 0.U)
+      io.out.bits(i).rs1 := Mux(rs1Tozimm, 0.U, inReg(i).instruction(19, 15))
     }.otherwise {
       io.out.bits(i).zimm := 0.U
       io.out.bits(i).rs1 := 0.U
@@ -222,26 +219,16 @@ class DecodeStage extends Module {
     }
 
     // Execute queue arbitration
-    when(io.out.bits(i).error =/= ICacheLineWorkErrorCode.none) {
+    when(io.out.bits(i).error =/= MemoryErrorCode.none) { // Instruction cache line error
       io.out.bits(i).executeQueue := ExecuteQueueType.alu
-    }.elsewhen(
-      (io.out.bits(i).opcode(6, 2) in (
-        "b11011".U, // jal
-        "b11001".U // jalr
-      )) ||
-        instructionType === InstructionType.B // b
-    ) {
+    }.elsewhen((io.out.bits(i).opcode(6, 2) in ("b11011".U, "b11001".U)) || instructionType === InstructionType.B) { // jal, jalr, branch
       io.out.bits(i).executeQueue := ExecuteQueueType.branch
-    }.elsewhen(
-      io.out.bits(i).opcode(6, 2) === "b00000".U || // load
-        instructionType === InstructionType.S // store
-    ) {
+    }.elsewhen(io.out.bits(i).opcode(6, 2) === "b00000".U || instructionType === InstructionType.S) { // load, store
       io.out.bits(i).executeQueue := ExecuteQueueType.memory
-    }.otherwise {
+    }.otherwise { // ALU
       io.out.bits(i).executeQueue := ExecuteQueueType.alu
     }
 
-    // pc & valid
     io.out.bits(i).pc := inReg(i).pc
     io.out.bits(i).next := inReg(i).next
     io.out.bits(i).spec := inReg(i).spec
@@ -272,7 +259,6 @@ class RegisterMappingStage extends Module {
     val mapping = new RegisterMappingIO()
     // ROBTable interface
     val tableWrite = new ROBTableWriteIO()
-
     // Recovery logic
     val recover = Input(Bool())
   })
@@ -292,24 +278,13 @@ class RegisterMappingStage extends Module {
   // Mapping logic
   io.mapping.valid := io.out.ready
   for (i <- 0 until 2) {
+    val mappingValid = inReg(i).valid && inReg(i).error === MemoryErrorCode.none
     // rs1
-    io.mapping.regGroup(i).rs1 := Mux(
-      inReg(i).valid && inReg(i).error === ICacheLineWorkErrorCode.none,
-      inReg(i).rs1,
-      0.U // Bypass
-    )
+    io.mapping.regGroup(i).rs1 := Mux(mappingValid, inReg(i).rs1, 0.U)
     // rs2
-    io.mapping.regGroup(i).rs2 := Mux(
-      inReg(i).valid && inReg(i).error === ICacheLineWorkErrorCode.none,
-      inReg(i).rs2,
-      0.U // Bypass
-    )
+    io.mapping.regGroup(i).rs2 := Mux(mappingValid, inReg(i).rs2, 0.U)
     // rd
-    io.mapping.regGroup(i).rd := Mux(
-      inReg(i).valid && inReg(i).error === ICacheLineWorkErrorCode.none,
-      inReg(i).rd,
-      0.U // Bypass
-    )
+    io.mapping.regGroup(i).rd := Mux(mappingValid, inReg(i).rd, 0.U)
   }
 
   // Output logic
@@ -374,7 +349,6 @@ class IssueStage(executeQueueWidth: Int) extends Module {
     val broadcast = Flipped(new DataBroadcastIO())
     // Execute queue interfaces
     val enqs = Vec(executeQueueWidth, new ExecuteQueueEnqueueIO())
-
     // Recovery logic
     val recover = Input(Bool())
   })
@@ -391,19 +365,15 @@ class IssueStage(executeQueueWidth: Int) extends Module {
   }
 
   // Check queue grants
-  private val grants = VecInit(
-    VecInit.fill(executeQueueWidth)(false.B), // Instruction 0 grant
-    VecInit.fill(executeQueueWidth)(false.B) // Instruction 1 grant
-  )
-  private val queueReady = VecInit(true.B, true.B)
+  private val grants = VecInit.fill(2)(VecInit.fill(executeQueueWidth)(false.B))
+  private val queueReady = VecInit.fill(2)(true.B)
 
   // Grant logic
   io.enqs.foreach(_.enq.valid := false.B)
 
   // Instruction 0 grant
   for (i <- 0 until executeQueueWidth) {
-    grants(0)(i) := inReg(0).executeQueue === io.enqs(i).queueType &&
-      inReg(0).valid
+    grants(0)(i) := inReg(0).executeQueue === io.enqs(i).queueType && inReg(0).valid
     when(grants(0)(i)) {
       queueReady(0) := io.enqs(i).enq.ready
       io.enqs(i).enq.valid := true.B
@@ -412,25 +382,17 @@ class IssueStage(executeQueueWidth: Int) extends Module {
 
   // Instruction 1 grant
   for (i <- 0 until executeQueueWidth) {
-    grants(1)(i) := inReg(1).executeQueue === io.enqs(i).queueType &&
-      inReg(1).valid &&
-      !grants(0)(i) // Priority
+    grants(1)(i) := inReg(1).executeQueue === io.enqs(i).queueType && inReg(1).valid && !grants(0)(i) // Priority
 
     when(grants(1)(i)) {
       queueReady(1) := io.enqs(i).enq.ready
       io.enqs(i).enq.valid := true.B
-    }.elsewhen(
-      inReg(1).executeQueue === io.enqs(i).queueType &&
-        inReg(1).valid &&
-        grants(0)(i)
-    ) { // Priority
+    }.elsewhen(inReg(1).executeQueue === io.enqs(i).queueType && inReg(1).valid && grants(0)(i)) { // Conflict
       queueReady(1) := false.B
     }
   }
 
-  for (i <- 0 until executeQueueWidth) {
-    io.enqs(i).enq.bits := 0.U.asTypeOf(new ExecuteEntry())
-  }
+  io.enqs.foreach(_.enq.bits := new ExecuteEntry().zero)
 
   for (
     i <- 0 until 2;
@@ -443,16 +405,10 @@ class IssueStage(executeQueueWidth: Int) extends Module {
       // Broadcast bypass
       // rs1
       for (k <- 0 until 2)
-        io.enqs(j).enq.bits.rs1 := CoreUtils.bypassBroadcast(
-          inReg(i).rs1,
-          io.broadcast.entries(k)
-        )
+        io.enqs(j).enq.bits.rs1 := CoreUtils.bypassBroadcast(inReg(i).rs1, io.broadcast.entries(k))
       // rs2
       for (k <- 0 until 2)
-        io.enqs(j).enq.bits.rs2 := CoreUtils.bypassBroadcast(
-          inReg(i).rs2,
-          io.broadcast.entries(k)
-        )
+        io.enqs(j).enq.bits.rs2 := CoreUtils.bypassBroadcast(inReg(i).rs2, io.broadcast.entries(k))
 
       io.enqs(j).enq.bits.rd := inReg(i).rd
       io.enqs(j).enq.bits.func3 := inReg(i).func3

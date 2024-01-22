@@ -6,7 +6,6 @@ import chisel3.util._
 import lltriscv.core._
 import lltriscv.core.broadcast.DataBroadcastSlotEntry
 import lltriscv.core.execute._
-import lltriscv.core.fetch.ICacheLineWorkErrorCode
 
 /*
  * Decode entry
@@ -38,7 +37,7 @@ class DecodeStageEntry extends Bundle {
   val pc = DataType.address // Corresponding PC
   val spec = DataType.address // Speculative PC
   val next = DataType.address // Next PC
-  val error = ICacheLineWorkErrorCode() // Error
+  val error = MemoryErrorCode() // Error
   val valid = Bool() // Validity
 }
 
@@ -60,7 +59,7 @@ class RegisterMappingStageEntry extends Bundle {
   val pc = DataType.address // Corresponding PC
   val spec = DataType.address // Speculative PC
   val next = DataType.address // Next PC
-  val error = ICacheLineWorkErrorCode() // Error
+  val error = MemoryErrorCode() // Error
   val valid = Bool() // Validity
 }
 
@@ -81,6 +80,6 @@ class IssueStageEntry extends Bundle {
   val zimm = DataType.zimmediate // Zero-extend immediate
   val pc = DataType.address // Corresponding PC
   val next = DataType.address // Next PC
-  val error = ICacheLineWorkErrorCode() // Error
+  val error = MemoryErrorCode() // Error
   val valid = Bool() // Validity
 }

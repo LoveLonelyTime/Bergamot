@@ -12,21 +12,21 @@ import lltriscv.utils.ChiselUtils._
 /*
  * Branch processing unit, which is suitable for branch operations
  *
+ * List of supported instructions:
+ * - I: jal, jalr, beq, bne, blt, bge, bltu, bgeu
+ *
  * Copyright (C) 2024-2025 LoveLonelyTime
  */
 
 /** Branch
   *
   * BranchDecodeStage -> BranchExecuteStage
-  *
-  * (jal, jalr, beq, bne, blt, bge, bltu, bgeu)
   */
 class Branch extends Module {
   val io = IO(new Bundle {
     // Pipeline interface
     val in = Flipped(DecoupledIO(new ExecuteEntry()))
     val out = DecoupledIO(new ExecuteResultEntry())
-
     // Recovery interface
     val recover = Input(Bool())
   })
@@ -53,7 +53,6 @@ class BranchDecodeStage extends Module {
     // Pipeline interface
     val in = Flipped(DecoupledIO(new ExecuteEntry()))
     val out = DecoupledIO(new BranchExecuteStageEntry())
-
     // Recovery interface
     val recover = Input(Bool())
   })
@@ -73,9 +72,9 @@ class BranchDecodeStage extends Module {
   // Decode logic
   // op
   io.out.bits.op := BranchOperationType.undefined
-  when(inReg.opcode(2) === 1.U) { // jal & jalr
+  when(inReg.opcode(2)) { // jal & jalr
     io.out.bits.op := BranchOperationType.jal
-  }.otherwise { // b
+  }.otherwise { // branch
     switch(inReg.func3) {
       is("b000".U) { io.out.bits.op := BranchOperationType.eq }
       is("b001".U) { io.out.bits.op := BranchOperationType.ne }
@@ -91,22 +90,21 @@ class BranchDecodeStage extends Module {
   io.out.bits.op2 := inReg.rs2.receipt
 
   // add1
-  when(inReg.instructionType === InstructionType.I) { // I jalr
+  when(inReg.instructionType === InstructionType.I) { // jalr
     io.out.bits.add1 := inReg.rs1.receipt
-  }.otherwise { // pc jump
+  }.otherwise { // PC jump
     io.out.bits.add1 := inReg.pc
   }
 
   // add2
-  when(inReg.instructionType === InstructionType.J) { // J jal
+  when(inReg.instructionType === InstructionType.J) { // jal
     io.out.bits.add2 := CoreUtils.signExtended(inReg.imm, 20)
-  }.elsewhen(inReg.instructionType === InstructionType.I) { // I jalr
+  }.elsewhen(inReg.instructionType === InstructionType.I) { // jalr
     io.out.bits.add2 := CoreUtils.signExtended(inReg.imm, 11)
-  }.otherwise { // B
+  }.otherwise { // branch
     io.out.bits.add2 := CoreUtils.signExtended(inReg.imm, 12)
   }
 
-  // rd & pc & valid
   io.out.bits.rd := inReg.rd
   io.out.bits.pc := inReg.pc
   io.out.bits.next := inReg.next
@@ -131,7 +129,6 @@ class BranchExecuteStage extends Module {
     // Pipeline interface
     val in = Flipped(DecoupledIO(new BranchExecuteStageEntry()))
     val out = DecoupledIO(new ExecuteResultEntry())
-
     // Recovery interface
     val recover = Input(Bool())
   })
@@ -166,6 +163,8 @@ class BranchExecuteStage extends Module {
   private val addPC = WireInit(inReg.add1 + inReg.add2)
 
   // Real PC
+  io.out.bits.noResult()
+
   io.out.bits.real := inReg.next
   switch(inReg.op) {
     is(BranchOperationType.eq) {
@@ -189,20 +188,13 @@ class BranchExecuteStage extends Module {
     is(BranchOperationType.jal) {
       io.out.bits.real := addPC(31, 1) ## 0.U // Reset LSB
     }
+    is(BranchOperationType.undefined) {
+      io.out.bits.triggerException(ExceptionCode.illegalInstruction)
+    }
   }
 
   io.out.bits.result := inReg.next // Save next PC
 
-  io.out.bits.xret := false.B
-  // Exception
-  io.out.bits.noException()
-  // Memory
-  io.out.bits.noMemory()
-  // CSR
-  io.out.bits.noCSR()
-  io.out.bits.noFlush()
-
-  // rd & pc & valid
   io.out.bits.rd := inReg.rd
   io.out.bits.pc := inReg.pc
   io.out.bits.next := inReg.next

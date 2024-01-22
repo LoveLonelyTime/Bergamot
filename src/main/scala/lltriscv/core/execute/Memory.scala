@@ -8,12 +8,14 @@ import lltriscv.utils.ChiselUtils._
 import lltriscv.core.DataType
 import lltriscv.core.record.TLBRequestIO
 import lltriscv.bus.SMAReaderIO
-import lltriscv.core.record.TLBErrorCode
 import lltriscv.bus.SMAWriterIO
 import lltriscv.core.record.StoreQueueAllocIO
 
 /*
  * Memory operation unit, which is suitable for memory operations
+ *
+ * List of supported instructions:
+ * - I: sb, sh, sw, lb, lh, lw, lbu, lhu
  *
  * Copyright (C) 2024-2025 LoveLonelyTime
  */
@@ -27,14 +29,12 @@ class Memory extends Module {
     // Pipeline interface
     val in = Flipped(DecoupledIO(new ExecuteEntry()))
     val out = DecoupledIO(new ExecuteResultEntry())
-
     // DTLB interface
     val dtlb = new TLBRequestIO()
     // SMA interface
     val sma = new SMAReaderIO()
     // Store queue interface
     val alloc = new StoreQueueAllocIO()
-
     // Recovery logic
     val recover = Input(Bool())
   })
@@ -71,7 +71,6 @@ class MemoryDecodeStage extends Module {
     // Pipeline interface
     val in = Flipped(DecoupledIO(new ExecuteEntry()))
     val out = DecoupledIO(new MemoryExecuteStageEntry())
-
     // Recovery logic
     val recover = Input(Bool())
   })
@@ -115,13 +114,8 @@ class MemoryDecodeStage extends Module {
   io.out.bits.add2 := CoreUtils.signExtended(inReg.imm, 11)
 
   // op1: the data stored
-  io.out.bits.op1 := Mux(
-    inReg.instructionType === InstructionType.S,
-    inReg.rs2.receipt,
-    0.U
-  )
+  io.out.bits.op1 := Mux(inReg.instructionType === InstructionType.S, inReg.rs2.receipt, 0.U)
 
-  // rd & pc & valid
   io.out.bits.rd := inReg.rd
   io.out.bits.pc := inReg.pc
   io.out.bits.next := inReg.next
@@ -146,7 +140,6 @@ class MemoryExecuteStage extends Module {
     // Pipeline interface
     val in = Flipped(DecoupledIO(new MemoryExecuteStageEntry()))
     val out = DecoupledIO(new MemoryTLBStageEntry())
-
     // Recovery interface
     val recover = Input(Bool())
   })
@@ -177,54 +170,12 @@ class MemoryExecuteStage extends Module {
     io.out.bits.error := MemoryErrorCode.misaligned
   }
 
-  // rd & pc & valid
   io.out.bits.rd := inReg.rd
   io.out.bits.pc := inReg.pc
   io.out.bits.next := inReg.next
   io.out.bits.valid := inReg.valid
 
   io.out.valid := true.B // No wait
-
-  // Recovery logic
-  when(io.recover) {
-    inReg.valid := false.B
-  }
-}
-
-//! Test code
-class MemoryNoTLBStage extends Module {
-  val io = IO(new Bundle {
-    // Pipeline interface
-    val in = Flipped(DecoupledIO(new MemoryTLBStageEntry()))
-    val out = DecoupledIO(new MemoryReadWriteStageEntry())
-
-    // Recovery interface
-    val recover = Input(Bool())
-  })
-
-  private val inReg = RegInit(new MemoryTLBStageEntry().zero)
-
-  when(io.out.ready && io.out.valid) { // Stall
-    inReg.valid := false.B
-  }
-  when(io.in.ready && io.in.valid) { // Sample
-    inReg := io.in.bits
-  }
-  io.in.ready := io.out.ready
-
-  io.out.bits.op := inReg.op
-  io.out.bits.error := MemoryErrorCode.none
-
-  io.out.bits.vaddress := inReg.vaddress
-  io.out.bits.paddress := inReg.vaddress
-  io.out.bits.op1 := inReg.op1
-
-  io.out.bits.rd := inReg.rd
-  io.out.bits.pc := inReg.pc
-  io.out.bits.next := inReg.next
-  io.out.bits.valid := inReg.valid
-
-  io.out.valid := true.B
 
   // Recovery logic
   when(io.recover) {
@@ -243,10 +194,8 @@ class MemoryTLBStage extends Module {
     // Pipeline interface
     val in = Flipped(DecoupledIO(new MemoryTLBStageEntry()))
     val out = DecoupledIO(new MemoryReadWriteStageEntry())
-
     // DTLB interface
     val dtlb = new TLBRequestIO()
-
     // Recovery interface
     val recover = Input(Bool())
   })
@@ -282,22 +231,14 @@ class MemoryTLBStage extends Module {
     io.dtlb.vaddress := inReg.vaddress
     io.dtlb.write := (inReg.op in MemoryOperationType.writeValues)
     when(io.dtlb.ready) {
-      switch(io.dtlb.error) {
-        is(TLBErrorCode.success) { error := MemoryErrorCode.none }
-        is(TLBErrorCode.pageFault) { error := MemoryErrorCode.pageFault }
-        is(TLBErrorCode.memoryFault) { error := MemoryErrorCode.memoryFault }
-      }
+      error := io.dtlb.error
       paddress := io.dtlb.paddress
       statusReg := Status.idle
     }
   }
 
   io.out.bits.op := inReg.op
-  when(inReg.error =/= MemoryErrorCode.none) { // Priority
-    io.out.bits.error := inReg.error
-  }.otherwise {
-    io.out.bits.error := error
-  }
+  io.out.bits.error := Mux(inReg.error =/= MemoryErrorCode.none, inReg.error, error) // Priority
 
   io.out.bits.vaddress := inReg.vaddress
   io.out.bits.paddress := paddress
@@ -408,10 +349,8 @@ class MemoryReadWriteStage extends Module {
     }
   }
 
-  io.out.bits.noException()
-
-  // Result decode
-  io.out.bits.result := 0.U
+  // Result
+  io.out.bits.noResult()
   switch(inReg.op) {
     is(MemoryOperationType.lb) {
       io.out.bits.result := CoreUtils.signExtended(readResult, 7)
@@ -430,13 +369,9 @@ class MemoryReadWriteStage extends Module {
     }
   }
 
-  io.out.bits.noMemory()
   when(inReg.op in MemoryOperationType.writeValues) {
     io.out.bits.resultMemory(allocID)
   }
-
-  io.out.bits.noCSR()
-  io.out.bits.xret := false.B
 
   // Exception
   when((inReg.op in MemoryOperationType.readValues) && readError) {
@@ -469,8 +404,6 @@ class MemoryReadWriteStage extends Module {
       }
     }
   }
-
-  io.out.bits.noFlush()
 
   // rd & pc & valid
   io.out.bits.rd := inReg.rd

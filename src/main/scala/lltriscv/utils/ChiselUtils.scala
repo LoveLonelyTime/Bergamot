@@ -34,7 +34,7 @@ object ChiselUtils {
     BinaryString2Int(x.toString(2))
   }
 
-  implicit class OperationExtension[T <: Data](x: T) {
+  implicit class DataOperationExtension[T <: Data](x: T) {
     def in(items: T*): Bool = {
       items.foldLeft(false.B)((p, n) => {
         p || x === n
@@ -48,5 +48,9 @@ object ChiselUtils {
     def zero: T = 0.U.asTypeOf(x)
 
     def zeroAsUInt: UInt = 0.U(x.getWidth.W)
+  }
+
+  implicit class BitsOperationExtension[T <: Bits](x: T) {
+    def refByte(i: Int) = x((i + 1) * 8 - 1, i * 8)
   }
 }

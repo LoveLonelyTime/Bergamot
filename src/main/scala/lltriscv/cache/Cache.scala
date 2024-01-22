@@ -2,12 +2,22 @@ package lltriscv.cache
 
 import chisel3._
 import chisel3.util._
+
 import lltriscv.bus.SMAReaderIO
 import lltriscv.bus.SMAWriterIO
+import lltriscv.core.execute.MemoryAccessLength
 import lltriscv.utils.CoreUtils
 import lltriscv.utils.ChiselUtils._
-import lltriscv.core.execute.MemoryAccessLength
 
+/*
+ * Cache
+ *
+ * Provide default cache implementations
+ *
+ * Copyright (C) 2024-2025 LoveLonelyTime
+ */
+
+//! TestCode
 class TrivialDCache extends Module {
   val io = IO(new Bundle {
     val upReader = Flipped(new SMAReaderIO())
@@ -24,10 +34,13 @@ class TrivialDCache extends Module {
   io.flush.empty := true.B
 }
 
+//! TestCode
 class TrivialICache(depth: Int) extends Module {
   val io = IO(new Bundle {
     val request = Flipped(new ICacheLineRequestIO(depth))
     val downReader = new SMAReaderIO()
+
+    val flush = Flipped(new FlushCacheIO())
   })
   private object Status extends ChiselEnum {
     val idle, working, finish = Value
@@ -71,4 +84,6 @@ class TrivialICache(depth: Int) extends Module {
       statusReg := Status.idle
     }
   }
+
+  io.flush.empty := true.B
 }

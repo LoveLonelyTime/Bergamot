@@ -98,8 +98,6 @@ class StoreQueue(depth: Int) extends Module {
     queue(writePtr).data := io.alloc.data
     queue(writePtr).valid := true.B
     queue(writePtr).retire := false.B
-
-    printf("StoreQueue: enq address = %d, data = %d, id = %d\n", io.alloc.address, io.alloc.data, writePtr)
   }
 
   // Bypass logic
@@ -238,10 +236,8 @@ class StoreQueue(depth: Int) extends Module {
     when(io.retire.entries(i).en) {
       queue(io.retire.entries(i).id).retire := true.B
       queue(io.retire.entries(i).id).valid := true.B // Recovery bypass
-      printf("StoreQueue: Retire id = %d\n", io.retire.entries(i).id)
     }
   }
-
 }
 
 /** Store queue memory writer

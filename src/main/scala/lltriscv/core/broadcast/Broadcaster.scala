@@ -2,6 +2,7 @@ package lltriscv.core.broadcast
 
 import chisel3._
 import chisel3.util._
+
 import lltriscv.core._
 import lltriscv.core.execute._
 import lltriscv.core.record._
@@ -27,8 +28,7 @@ abstract class Broadcaster(executeQueueWidth: Int) extends Module {
   require(executeQueueWidth > 0, "Execute queue depth must be greater than 0")
   val io = IO(new Bundle {
     // Execute queue interfaces
-    val queues =
-      Vec(executeQueueWidth, Flipped(DecoupledIO(new ExecuteResultEntry())))
+    val queues = Vec(executeQueueWidth, Flipped(DecoupledIO(new ExecuteResultEntry())))
     // Broadcast interface
     val broadcast = new DataBroadcastIO()
     // ROB table commit interface
@@ -60,12 +60,7 @@ class RoundRobinBroadcaster(executeQueueWidth: Int) extends Broadcaster(executeQ
       io.queues(queuePtr).ready := true.B
       io.tableCommit.entries(entryPtr) <> io.queues(queuePtr).bits
       when(io.queues(queuePtr).bits.valid) {
-        io.broadcast
-          .entries(entryPtr)
-          .castBroadcast(
-            io.queues(queuePtr).bits.rd,
-            io.queues(queuePtr).bits.result
-          )
+        io.broadcast.entries(entryPtr).castBroadcast(io.queues(queuePtr).bits.rd, io.queues(queuePtr).bits.result)
       }
     }
   }

@@ -11,7 +11,7 @@ import lltriscv.core.broadcast.DataBroadcastIO
 import lltriscv.core.execute.ExecuteQueueEnqueueIO
 import lltriscv.core.record.ROBTableWriteIO
 import lltriscv.bus.SMAReaderIO
-import lltriscv.core.interconnect.SMA2ReaderInterconnect
+import lltriscv.interconnect.SMA2ReaderInterconnect
 import lltriscv.core.record.PrivilegeType
 import lltriscv.cache.FlushCacheIO
 import lltriscv.core.record.RegisterUpdateIO
@@ -26,17 +26,33 @@ import lltriscv.cache.Serial2Flusher
 import lltriscv.bus.SMAWriterIO
 import lltriscv.core.record.StoreQueue
 import lltriscv.core.record.StoreQueueMemoryWriter
-import lltriscv.core.interconnect.SMAWithStoreQueueInterconnect
+import lltriscv.interconnect.SMAWithStoreQueueInterconnect
 import lltriscv.core.record.StoreQueueRetireIO
 import lltriscv.core.execute.ExecuteResultEntry
 import lltriscv.core.broadcast.RoundRobinBroadcaster
 import lltriscv.core.retire.InstructionRetire
 import lltriscv.core.record.CSRs
 import lltriscv.core.record.ROB
+import decode.Decode
+import lltriscv.cache.Parallel2Flusher
 
+/** Core config class
+  *
+  * @param iTLBDepth
+  * @param iCacheLineDepth
+  * @param fetchQueueDepth
+  * @param executeQueueWidth
+  * @param executeQueueDepth
+  * @param dTLBDepth
+  * @param storeQueueDepth
+  * @param robDepth
+  */
 case class CoreConfig(val iTLBDepth: Int, val iCacheLineDepth: Int, val fetchQueueDepth: Int, val executeQueueWidth: Int, val executeQueueDepth: Int, val dTLBDepth: Int, val storeQueueDepth: Int, val robDepth: Int)
 
 object CoreConfig {
+
+  /** Default config
+    */
   val default = CoreConfig(
     iTLBDepth = 8,
     iCacheLineDepth = 8,
@@ -49,6 +65,11 @@ object CoreConfig {
   )
 }
 
+/** LLTRISCVCoreExq
+  *
+  * @param config
+  *   Core config
+  */
 class LLTRISCVCoreExq(config: CoreConfig) extends Module {
   val io = IO(new Bundle {
     val smaReader = new SMAReaderIO()
@@ -60,7 +81,7 @@ class LLTRISCVCoreExq(config: CoreConfig) extends Module {
   private val coreBackend = Module(new CoreBackend(config))
 
   private val reader2Interconnect = Module(new SMA2ReaderInterconnect())
-  private val tlbFlusher = Module(new Serial2Flusher()) // ! Parallel
+  private val tlbFlusher = Module(new Parallel2Flusher())
 
   // CoreFrontend
   coreFrontend.io.sma <> reader2Interconnect.io.in1
@@ -87,7 +108,7 @@ class LLTRISCVCoreExq(config: CoreConfig) extends Module {
   // CoreBackend
   coreBackend.io.deqs <> coreExecute.io.deqs
   coreBackend.io.dCacheFlush <> coreExecute.io.dCacheFlush
-  // ! coreBackend.io.iCacheFlush <>
+  coreBackend.io.iCacheFlush <> coreFrontend.io.iCacheFlush
   coreBackend.io.iCacheFlush.empty := true.B
   coreBackend.io.tlbFlush <> tlbFlusher.io.in
   coreBackend.io.update <> coreFrontend.io.update
@@ -101,6 +122,13 @@ class LLTRISCVCoreExq(config: CoreConfig) extends Module {
   reader2Interconnect.io.out <> io.smaReader
 }
 
+/** Core frontend
+  *
+  * From instruction fetch to dispatching
+  *
+  * @param config
+  *   Core config
+  */
 class CoreFrontend(config: CoreConfig) extends Module {
   val io = IO(new Bundle {
     val sma = new SMAReaderIO()
@@ -115,6 +143,7 @@ class CoreFrontend(config: CoreConfig) extends Module {
     val recover = Input(Bool())
 
     val iTLBFlush = Flipped(new FlushCacheIO())
+    val iCacheFlush = Flipped(new FlushCacheIO())
 
     val privilege = Input(PrivilegeType())
     val satp = Input(DataType.operation)
@@ -138,6 +167,7 @@ class CoreFrontend(config: CoreConfig) extends Module {
 
   // ICache
   iCache.io.downReader <> reader2Interconnect.io.in2
+  iCache.io.flush <> io.iCacheFlush
 
   // Fetch
   fetch.io.itlb <> itlb.io.request
@@ -163,6 +193,13 @@ class CoreFrontend(config: CoreConfig) extends Module {
   reader2Interconnect.io.out <> io.sma
 }
 
+/** Core execute
+  *
+  * Including three instruction cores: ALU, Memory, Branch
+  *
+  * @param config
+  *   Core config
+  */
 class CoreExecute(config: CoreConfig) extends Module {
   val io = IO(new Bundle {
     val enqs = Flipped(Vec(config.executeQueueWidth, new ExecuteQueueEnqueueIO()))
@@ -273,6 +310,13 @@ class CoreExecute(config: CoreConfig) extends Module {
   io.deqs(2) <> memory.io.out
 }
 
+/** Core backend
+  *
+  * Responsible for instructing retire and update core status
+  *
+  * @param config
+  *   Core config
+  */
 class CoreBackend(config: CoreConfig) extends Module {
   val io = IO(new Bundle {
     val deqs = Vec(config.executeQueueWidth, Flipped(DecoupledIO(new ExecuteResultEntry())))

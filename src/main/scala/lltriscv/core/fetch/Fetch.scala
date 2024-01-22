@@ -6,9 +6,9 @@ import lltriscv.core.DataType
 import lltriscv.core.decode.DecodeStageEntry
 import lltriscv.utils.ChiselUtils._
 import lltriscv.core.record.TLBRequestIO
-import lltriscv.core.record.TLBErrorCode
 import lltriscv.cache.ICacheLineRequestIO
 import lltriscv.utils.CoreUtils
+import lltriscv.core.execute.MemoryErrorCode
 
 /*
  * Instruction fetch
@@ -45,22 +45,40 @@ class Fetch(cacheLineDepth: Int, queueDepth: Int) extends Module {
   speculationStage.io.correctPC := io.correctPC
   speculationStage.io.recover := io.recover
   instructionQueue.io.recover := io.recover
+  instructionFetcher.io.recover := io.recover
 }
 
+/** Instruction fetcher
+  *
+  * Caching two lines at once can perform cross line instructions concatenation.
+  *
+  * Composed of two independent working state machines:ITLB state machine, ICache state machine.
+  *
+  * ITLB state machine is responsible for caching the PTE corresponding to the current CacheLine and the PTE corresponding to the next CacheLine.
+  *
+  * ICache state machine is responsible for caching the current and next CacheLine.
+  *
+  * @param cacheLineDepth
+  *   cache line depth
+  */
 class InstructionFetcher(cacheLineDepth: Int) extends Module {
-  require(cacheLineDepth % 2 == 0)
-  require(cacheLineDepth >= 4)
+  require(cacheLineDepth % 2 == 0, "Instruction Cache line depth must be a multiple of 2")
+  require(cacheLineDepth >= 4, "Instruction Cache line depth must be greater than or equal 4")
+
   val io = IO(new Bundle {
     val out = Output(Vec(2, new RawInstructionEntry()))
     val pc = Input(DataType.address)
     val itlb = new TLBRequestIO()
     val icache = new ICacheLineRequestIO(cacheLineDepth)
+    val recover = Input(Bool())
   })
+
+  // Buffer
   private val itlbWorkReg = RegInit(Vec(2, new ITLBWorkEntry()).zero)
   private val lineWorkReg = RegInit(Vec(2, new ICacheLineWorkEntry()).zero)
 
   // CacheLineAddress |       CacheLineOffset     | byte offset
-  //                  | log2Ceil(cacheLineDepth)  |     1
+  //    Remainder     | log2Ceil(cacheLineDepth)  |     1
   private def getCacheLineAddress(address: UInt) = address(31, log2Ceil(cacheLineDepth) + 1) ## 0.U((log2Ceil(cacheLineDepth) + 1).W)
   private def getNextCacheLineAddress(address: UInt) = (address(31, log2Ceil(cacheLineDepth) + 1) + 1.U) ## 0.U((log2Ceil(cacheLineDepth) + 1).W)
   private def getCacheLineOffset(address: UInt) = address(log2Ceil(cacheLineDepth), 1)
@@ -85,14 +103,18 @@ class InstructionFetcher(cacheLineDepth: Int) extends Module {
   private val itlbStatusReg = RegInit(ITLBStatus.idle)
   private val itlbQueryAddressReg = RegInit(DataType.address.zeroAsUInt)
   private val itlbVictim = RegInit(0.U)
+  private val itlbTaskFlag = RegInit(false.B)
+
   when(itlbStatusReg === ITLBStatus.idle) {
     when(!itlbMatch.reduceTree(_ || _)) { // ITLB missing
       itlbQueryAddressReg := getCacheLineAddress(io.pc)
       itlbVictim := 0.U
+      itlbTaskFlag := true.B
       itlbStatusReg := ITLBStatus.req
     }.elsewhen(!nextITLBMatch.reduceTree(_ || _)) { // Next ITLB missing
       itlbQueryAddressReg := getNextCacheLineAddress(io.pc)
       itlbVictim := itlbMatch(0) // Victim is another one
+      itlbTaskFlag := true.B
       itlbStatusReg := ITLBStatus.req
     }
   }
@@ -104,10 +126,13 @@ class InstructionFetcher(cacheLineDepth: Int) extends Module {
     io.itlb.vaddress := itlbQueryAddressReg
     io.itlb.valid := true.B
     when(io.itlb.ready) {
-      itlbWorkReg(itlbVictim).vpn := itlbQueryAddressReg(31, 12)
-      itlbWorkReg(itlbVictim).ppn := io.itlb.paddress(31, 10)
-      itlbWorkReg(itlbVictim).error := io.itlb.error
-      itlbWorkReg(itlbVictim).valid := true.B
+      when(itlbTaskFlag) {
+        // Not consider 4MiB pages
+        itlbWorkReg(itlbVictim).vpn := itlbQueryAddressReg(31, 12)
+        itlbWorkReg(itlbVictim).ppn := io.itlb.paddress(31, 12)
+        itlbWorkReg(itlbVictim).error := io.itlb.error
+        itlbWorkReg(itlbVictim).valid := true.B
+      }
 
       itlbStatusReg := ITLBStatus.idle // Return
     }
@@ -121,28 +146,22 @@ class InstructionFetcher(cacheLineDepth: Int) extends Module {
   private val iCacheQueryVAddressReg = RegInit(DataType.address.zeroAsUInt)
   private val iCacheQueryPAddressReg = RegInit(DataType.address.zeroAsUInt)
   private val iCacheVictim = RegInit(0.U)
+  private val iCacheTaskFlag = RegInit(false.B)
 
   when(iCacheStatusReg === ICacheStatus.idle) {
     when(!lineMatch.reduceTree(_ || _)) { // Cache line missing
       for (i <- 0 until 2) {
         when(itlbMatch(i)) { // ITLB exists
-          switch(itlbWorkReg(i).error) { // ITLB Error ?
-            is(TLBErrorCode.memoryFault) {
-              lineWorkReg(0).pc := getCacheLineAddress(io.pc)
-              lineWorkReg(0).error := ICacheLineWorkErrorCode.memoryFault
-              lineWorkReg(0).valid := true.B
-            }
-            is(TLBErrorCode.pageFault) {
-              lineWorkReg(0).pc := getCacheLineAddress(io.pc)
-              lineWorkReg(0).error := ICacheLineWorkErrorCode.pageFault
-              lineWorkReg(0).valid := true.B
-            }
-            is(TLBErrorCode.success) { // Query
-              iCacheQueryVAddressReg := getCacheLineAddress(io.pc)
-              iCacheQueryPAddressReg := itlbWorkReg(i).ppn(19, 0) ## getCacheLineAddress(io.pc)(11, 0)
-              iCacheVictim := 0.U
-              iCacheStatusReg := ICacheStatus.req
-            }
+          when(itlbWorkReg(i).error === MemoryErrorCode.none) { // OK
+            iCacheQueryVAddressReg := getCacheLineAddress(io.pc)
+            iCacheQueryPAddressReg := itlbWorkReg(i).ppn(19, 0) ## getCacheLineAddress(io.pc)(11, 0)
+            iCacheVictim := 0.U
+            iCacheTaskFlag := true.B
+            iCacheStatusReg := ICacheStatus.req
+          }.otherwise { // Error
+            lineWorkReg(0).pc := getCacheLineAddress(io.pc)
+            lineWorkReg(0).error := itlbWorkReg(i).error
+            lineWorkReg(0).valid := true.B
           }
         }
       }
@@ -150,23 +169,16 @@ class InstructionFetcher(cacheLineDepth: Int) extends Module {
       val nextVictim = lineMatch(0) // Victim is another one
       for (i <- 0 until 2) {
         when(nextITLBMatch(i)) { // Next ITLB exists
-          switch(itlbWorkReg(i).error) { // ITLB Error ?
-            is(TLBErrorCode.memoryFault) {
-              lineWorkReg(nextVictim).pc := getNextCacheLineAddress(io.pc)
-              lineWorkReg(nextVictim).error := ICacheLineWorkErrorCode.memoryFault
-              lineWorkReg(nextVictim).valid := true.B
-            }
-            is(TLBErrorCode.pageFault) {
-              lineWorkReg(nextVictim).pc := getNextCacheLineAddress(io.pc)
-              lineWorkReg(nextVictim).error := ICacheLineWorkErrorCode.pageFault
-              lineWorkReg(nextVictim).valid := true.B
-            }
-            is(TLBErrorCode.success) { // Query
-              iCacheQueryVAddressReg := getNextCacheLineAddress(io.pc)
-              iCacheQueryPAddressReg := itlbWorkReg(i).ppn(19, 0) ## getNextCacheLineAddress(io.pc)(11, 0)
-              iCacheVictim := nextVictim
-              iCacheStatusReg := ICacheStatus.req
-            }
+          when(itlbWorkReg(i).error === MemoryErrorCode.none) { // OK
+            iCacheQueryVAddressReg := getNextCacheLineAddress(io.pc)
+            iCacheQueryPAddressReg := itlbWorkReg(i).ppn(19, 0) ## getNextCacheLineAddress(io.pc)(11, 0)
+            iCacheVictim := nextVictim
+            iCacheTaskFlag := true.B
+            iCacheStatusReg := ICacheStatus.req
+          }.otherwise {
+            lineWorkReg(nextVictim).pc := getNextCacheLineAddress(io.pc)
+            lineWorkReg(nextVictim).error := itlbWorkReg(i).error
+            lineWorkReg(nextVictim).valid := true.B
           }
         }
       }
@@ -180,18 +192,18 @@ class InstructionFetcher(cacheLineDepth: Int) extends Module {
     io.icache.valid := true.B
 
     when(io.icache.ready) {
-      lineWorkReg(iCacheVictim).pc := iCacheQueryVAddressReg
-      lineWorkReg(iCacheVictim).content := io.icache.data
-      lineWorkReg(iCacheVictim).error := Mux(io.icache.error, ICacheLineWorkErrorCode.memoryFault, ICacheLineWorkErrorCode.none)
-      lineWorkReg(iCacheVictim).valid := true.B
+      when(iCacheTaskFlag) {
+        lineWorkReg(iCacheVictim).pc := iCacheQueryVAddressReg
+        lineWorkReg(iCacheVictim).content := io.icache.data
+        lineWorkReg(iCacheVictim).error := Mux(io.icache.error, MemoryErrorCode.memoryFault, MemoryErrorCode.none)
+        lineWorkReg(iCacheVictim).valid := true.B
+      }
 
       iCacheStatusReg := ICacheStatus.idle // Return
     }
   }
 
-  io.out.foreach((item) => {
-    item := new RawInstructionEntry().zero
-  })
+  io.out.foreach(_ := new RawInstructionEntry().zero)
 
   // Merge logic
   for (i <- 0 until 2) {
@@ -218,7 +230,7 @@ class InstructionFetcher(cacheLineDepth: Int) extends Module {
       compress(1) := lineWorkReg(nextI).content(offset(1))(1, 0) =/= "b11".U
 
       // Output
-      when(lineWorkReg(i).error =/= ICacheLineWorkErrorCode.none) { // Error
+      when(lineWorkReg(i).error =/= MemoryErrorCode.none) { // Error
         io.out(0).error := lineWorkReg(i).error
         io.out(0).valid := true.B
       }.elsewhen(compress(0)) { // 16-bits OK
@@ -230,7 +242,7 @@ class InstructionFetcher(cacheLineDepth: Int) extends Module {
         io.out(0).compress := false.B
         io.out(0).valid := true.B
       }.elsewhen(nextLineMatch(1 - i)) { // 32-bits, crossing
-        when(lineWorkReg(1 - i).error =/= ICacheLineWorkErrorCode.none) { // Error
+        when(lineWorkReg(1 - i).error =/= MemoryErrorCode.none) { // Error
           io.out(0).error := lineWorkReg(1 - i).error
           io.out(0).valid := true.B
         }.otherwise { // OK
@@ -240,9 +252,9 @@ class InstructionFetcher(cacheLineDepth: Int) extends Module {
         }
       }
 
-      when(lineWorkReg(i).error =/= ICacheLineWorkErrorCode.none || lineWorkReg(nextI).pc =/= getCacheLineAddress(pcValues(1))) { // Skip
+      when(lineWorkReg(i).error =/= MemoryErrorCode.none || lineWorkReg(nextI).pc =/= getCacheLineAddress(pcValues(1))) { // Skip
         io.out(1).valid := false.B
-      }.elsewhen(lineWorkReg(nextI).error =/= ICacheLineWorkErrorCode.none) { // Error
+      }.elsewhen(lineWorkReg(nextI).error =/= MemoryErrorCode.none) { // Error
         io.out(1).error := lineWorkReg(nextI).error
         io.out(1).valid := true.B
       }.elsewhen(compress(1)) { // 16-bits OK
@@ -254,7 +266,7 @@ class InstructionFetcher(cacheLineDepth: Int) extends Module {
         io.out(1).compress := false.B
         io.out(1).valid := true.B
       }.elsewhen(nextLineMatch(1 - i)) { // 32-bits, crossing
-        when(lineWorkReg(1 - i).error =/= ICacheLineWorkErrorCode.none) { // Error
+        when(lineWorkReg(1 - i).error =/= MemoryErrorCode.none) { // Error
           io.out(1).error := lineWorkReg(1 - i).error
           io.out(1).valid := true.B
         }.otherwise { // OK
@@ -265,8 +277,24 @@ class InstructionFetcher(cacheLineDepth: Int) extends Module {
       }
     }
   }
+
+  // Recover logic
+  when(io.recover) {
+    // Clear buffers
+    itlbWorkReg.foreach(_.valid := false.B)
+    lineWorkReg.foreach(_.valid := false.B)
+    // Undo cache tasks
+    itlbTaskFlag := false.B
+    iCacheTaskFlag := false.B
+  }
 }
 
+/** Instruction extender
+  *
+  * Expanding 16 bits instructions to 32 bits
+  *
+  * C Extensions
+  */
 class InstructionExtender extends Module {
   val io = IO(new Bundle {
     val in = Input(Vec(2, new RawInstructionEntry()))
@@ -442,6 +470,8 @@ class InstructionExtender extends Module {
   }
 }
 
+/** Instruction predictor
+  */
 class InstructionPredictor extends Module {
   val io = IO(new Bundle {
     val in = Input(Vec(2, new RawInstructionEntry()))
@@ -483,6 +513,10 @@ class InstructionPredictor extends Module {
   }
 }
 
+/** Speculation stage
+  *
+  * Extend instructions and predict
+  */
 class SpeculationStage extends Module {
   val io = IO(new Bundle {
     // Pipeline interface
@@ -526,7 +560,14 @@ class SpeculationStage extends Module {
   }
 }
 
+/** Instruction queue
+  *
+  * @param depth
+  *   Instruction queue depth
+  */
 class InstructionQueue(depth: Int) extends Module {
+  require(depth > 0, "Instruction queue depth must be greater than 0")
+
   val io = IO(new Bundle {
     val enq = Flipped(DecoupledIO(Vec(2, new SpeculativeEntry())))
     val deq = DecoupledIO(Vec(2, new DecodeStageEntry()))
@@ -579,9 +620,6 @@ class InstructionQueue(depth: Int) extends Module {
 
   // Recovery logic
   when(io.recover) {
-    queue.foreach(item => {
-      item(0).valid := false.B
-      item(1).valid := false.B
-    })
+    queue.foreach(_.foreach(_.valid := false.B))
   }
 }

@@ -1,11 +1,13 @@
-package lltriscv.core.interconnect
+package lltriscv.interconnect
 
 import chisel3._
 import chisel3.util._
 import lltriscv.utils.CoreUtils
+import lltriscv.utils.ChiselUtils._
 import lltriscv.bus.SMAReaderIO
 import lltriscv.core.record.StoreQueueBypassIO
 import lltriscv.core.execute.MemoryAccessLength
+import lltriscv.core.DataType
 
 /*
  * SMA interconnect
@@ -15,7 +17,7 @@ import lltriscv.core.execute.MemoryAccessLength
 
 /** SMA with store queue interconnect
   *
-  * The read output port of the Memory executing component, bypassing store queue
+  * The read output port of the Memory executing component, bypassing store queue.
   */
 class SMAWithStoreQueueInterconnect extends Module {
   val io = IO(new Bundle {
@@ -31,28 +33,18 @@ class SMAWithStoreQueueInterconnect extends Module {
   io.in.error := io.out.error
   io.in.ready := io.out.ready
 
-  // Bypass
+  // Bypass - 32bits
   io.bypass.address := io.in.address
-  private val data = VecInit(io.out.data(7, 0), io.out.data(15, 8), io.out.data(23, 16), io.out.data(31, 24))
-  when(io.bypass.strobe(0)) {
-    data(0) := io.bypass.data(7, 0)
-  }
-  when(io.bypass.strobe(1)) {
-    data(1) := io.bypass.data(15, 8)
-  }
-  when(io.bypass.strobe(2)) {
-    data(2) := io.bypass.data(23, 16)
-  }
-  when(io.bypass.strobe(3)) {
-    data(3) := io.bypass.data(31, 24)
-  }
+  private val data = Wire(Vec(4, DataType.aByte))
+  for (i <- 0 until 4)
+    data(i) := Mux(io.bypass.strobe(i), io.bypass.data.refByte(i), io.out.data.refByte(i))
 
   io.in.data := data(3) ## data(2) ## data(1) ## data(0)
 }
 
 /** SMA 2-readers interconnect
   *
-  * Adopting priority arbitration, in1 > in2
+  * Priority arbitration, in1 > in2
   */
 class SMA2ReaderInterconnect extends Module {
   val io = IO(new Bundle {

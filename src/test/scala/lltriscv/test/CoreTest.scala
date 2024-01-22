@@ -23,10 +23,11 @@ class RegisterMappingTableTest extends AnyFreeSpec with ChiselScalatestTester {
       Seq(WriteVcdAnnotation, VerilatorBackendAnnotation)
     ) { dut =>
       val memory = new FlatMemoryMock(4096 * 4) with MemoryFileMock
-      memory.importBin(new File("test.bin"), 0)
-
+      memory.importBin(new File("boot.bin"), 0)
+      memory.importBin(new File("test.bin"), 12288)
       var run = true
-      for (jk <- 0 until 200) {
+      // for (i <- 0 until 500) {
+      while (run) {
         // Read write memory
         dut.io.smaReader.ready.poke(false.B)
         dut.io.smaReader.error.poke(false.B)
@@ -59,10 +60,13 @@ class RegisterMappingTableTest extends AnyFreeSpec with ChiselScalatestTester {
           }
 
           if (dut.io.smaWriter.writeType.peek() == MemoryAccessLength.word) {
-            // val addr = dut.io.smaWriter.address.peekInt().toInt
+            val addr = dut.io.smaWriter.address.peekInt().toInt
             // println(s"Writer addr: ${addr}, data: ${dut.io.smaWriter.data.peekInt()}")
-            // if (dut.io.smaWriter.address.peekInt().toInt == 12412) { run = false }
-            if (dut.io.smaWriter.address.peekInt().toInt == 124) { run = false }
+            if (dut.io.smaWriter.address.peekInt().toInt == 12412) {
+              run = false
+              println(s"Writer addr: ${addr}, data: ${dut.io.smaWriter.data.peekInt()}")
+            }
+            // if (dut.io.smaWriter.address.peekInt().toInt == 124) { run = false }
             memory.storeInt(dut.io.smaWriter.address.peekInt().toInt, ChiselUtils.BigInt2Int(dut.io.smaWriter.data.peekInt()))
           }
         }

@@ -4,7 +4,6 @@ import chisel3._
 import chisel3.util._
 
 import lltriscv.core._
-import lltriscv.core.fetch.ICacheLineWorkErrorCode
 
 /*
  * ALU entry
@@ -16,42 +15,47 @@ import lltriscv.core.fetch.ICacheLineWorkErrorCode
   */
 object ALUOperationType extends ChiselEnum {
   /*
-   * Reserve operation:
+   * Reserve operations:
    * - none: 0
    * - undefined: 0 (Illegal instruction exception)
    *
-   * Arithmetic operation:
+   * Arithmetic operations:
    * - add: op1 + op2
    * - sub: op1 - op2
    *
-   * Logical operation:
+   * Logical operations:
    * - and: op1 & op2
    * - or: op1 | op2
    * - xor: op1 ^ op2
    *
-   * Shift operation:
+   * Shift operations:
    * - sll: op1 << op2
    * - srl: op1 >> op2 (zero-extend)
    * - sra: op1 >> op2 (sign-extend)
    *
-   * Compare then set operation:
+   * Compare then set operations:
    * - slt: if op1 < op1 then 1 else 0
    * - sltu: if op1 < op1 (unsigned) then 1 else 0
    *
-   * CSR operation:
+   * CSR operations:
    * - csrrw: CSR read then write
    * - csrrs: CSR read then set
    * - csrrc: CSR read then clear
    *
-   * Privilege switch operation:
+   * Privilege switch operations:
    * - env: Trigger environment call trap (exception)
    * - xret: Environment call return
    *
-   * Fence operation:
+   * Fence operations:
    * - fence: Memory fence
    * - fencei: Instruction memory fence
+   *
+   * Multiplication and division operations:
+   * - mul, mulh, mulhsu, mulhu: Multiplication
+   * - div, divu: Division
+   * - rem, remu: Modulus
    */
-  val none, undefined, add, sub, and, or, xor, sll, srl, sra, slt, sltu, csrrw, csrrs, csrrc, env, xret, fence, fencei = Value
+  val none, undefined, add, sub, and, or, xor, sll, srl, sra, slt, sltu, csrrw, csrrs, csrrc, env, xret, fence, fencei, mul, mulh, mulhsu, mulhu, div, divu, rem, remu = Value
 }
 
 /** ALU execute stage entry
@@ -64,7 +68,7 @@ class ALUExecuteStageEntry extends Bundle {
   val op2 = DataType.operation // Operand 2
   val rd = DataType.receipt // Destination receipt
   val csrAddress = DataType.csr // CSR address
-  val error = ICacheLineWorkErrorCode() // Error
+  val error = MemoryErrorCode() // Error
   val csrError = Bool() // CSR error
   val pc = DataType.address // Corresponding PC
   val next = DataType.address // Next PC

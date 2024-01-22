@@ -9,6 +9,7 @@ import lltriscv.core.execute.MemoryAccessLength
 
 import lltriscv.utils.ChiselUtils._
 import lltriscv.cache.FlushCacheIO
+import lltriscv.core.execute.MemoryErrorCode
 
 /*
  * TLB (Translation Lookaside Buffer)
@@ -93,7 +94,7 @@ class TLB(depth: Int, data: Boolean) extends Module {
 
   io.request.ready := false.B
   io.request.paddress := 0.U
-  io.request.error := TLBErrorCode.success
+  io.request.error := MemoryErrorCode.none
   // Sample
   when(statusReg === Status.idle) {
     when(io.flush.req) { // Flush
@@ -104,7 +105,7 @@ class TLB(depth: Int, data: Boolean) extends Module {
       // MPRV check
       when(pagePrivilege === PrivilegeType.M || !io.satp(31)) { // Page memory disabled
         io.request.paddress := io.request.vaddress
-        io.request.error := TLBErrorCode.success
+        io.request.error := MemoryErrorCode.none
         io.request.ready := true.B
       }.otherwise { // Page memory enabled
         statusReg := Status.lookup
@@ -138,7 +139,7 @@ class TLB(depth: Int, data: Boolean) extends Module {
               table(i).ppn ## io.request.vaddress(11, 0) // 4KiB page
             )
           }.otherwise { // Fault
-            io.request.error := TLBErrorCode.pageFault
+            io.request.error := MemoryErrorCode.pageFault
           }
         }
       }
@@ -206,7 +207,7 @@ class TLB(depth: Int, data: Boolean) extends Module {
           statusReg := Status.lookup // Return
         }
       }.otherwise { // Memory error
-        io.request.error := TLBErrorCode.memoryFault
+        io.request.error := MemoryErrorCode.memoryFault
         io.request.ready := true.B
         statusReg := Status.idle
       }
@@ -225,7 +226,7 @@ class TLB(depth: Int, data: Boolean) extends Module {
         alloc(pte, false.B, vpn1Reg(5))
         statusReg := Status.lookup // Return
       }.otherwise { // Memory error
-        io.request.error := TLBErrorCode.memoryFault
+        io.request.error := MemoryErrorCode.memoryFault
         io.request.ready := true.B
         statusReg := Status.idle
       }
