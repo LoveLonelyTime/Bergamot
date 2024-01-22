@@ -29,11 +29,13 @@ object CoreUtils {
     *   Max value = depth - 1
     * @param incr
     *   Increse flag
+    * @param init
+    *   Init value
     * @return
     *   (current value, next value)
     */
-  def pointer(depth: Int, incr: Bool) = {
-    val cntReg = RegInit(0.U(log2Ceil(depth).W))
+  def pointer(depth: Int, incr: Bool, init: Int = 0) = {
+    val cntReg = RegInit(init.U(log2Ceil(depth).W))
     val nextVal = Mux(cntReg === (depth - 1).U, 0.U, cntReg + 1.U)
     when(incr) {
       cntReg := nextVal
@@ -52,6 +54,7 @@ object CoreUtils {
     * @return
     */
   def matchBroadcast(
+      output: DataBroadcastSlotEntry,
       slot: DataBroadcastSlotEntry,
       source: DataBroadcastEntry
   ) = {
@@ -61,40 +64,8 @@ object CoreUtils {
         slot.receipt === source.receipt
     ) {
       // Reset and replace
-      slot.pending := false.B
-      slot.receipt := source.data
+      output.pending := false.B
+      output.receipt := source.data
     }
-  }
-
-  /** Bypass a broadcast slot
-    *
-    * When the match is successful, return bypass result
-    *
-    * Otherwise, return slot
-    *
-    * @param slot
-    *   Broadcast slot
-    * @param source
-    *   Broadcast source
-    * @return
-    *   Bypass result
-    */
-  def bypassBroadcast(
-      slot: DataBroadcastSlotEntry,
-      source: DataBroadcastEntry
-  ) = {
-    val result = Wire(new DataBroadcastSlotEntry())
-    when(
-      source.valid &&
-        slot.pending &&
-        slot.receipt === source.receipt
-    ) {
-      result.pending := false.B
-      result.receipt := source.data
-    }.otherwise {
-      result.pending := slot.pending
-      result.receipt := slot.receipt
-    }
-    result
   }
 }

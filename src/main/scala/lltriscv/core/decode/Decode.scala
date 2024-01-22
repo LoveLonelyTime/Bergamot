@@ -360,8 +360,8 @@ class IssueStage(executeQueueWidth: Int) extends Module {
     i <- 0 until 2;
     j <- 0 until 2
   ) {
-    CoreUtils.matchBroadcast(inReg(i).rs1, io.broadcast.entries(j))
-    CoreUtils.matchBroadcast(inReg(i).rs2, io.broadcast.entries(j))
+    CoreUtils.matchBroadcast(inReg(i).rs1, inReg(i).rs1, io.broadcast.entries(j))
+    CoreUtils.matchBroadcast(inReg(i).rs2, inReg(i).rs2, io.broadcast.entries(j))
   }
 
   // Check queue grants
@@ -404,11 +404,16 @@ class IssueStage(executeQueueWidth: Int) extends Module {
 
       // Broadcast bypass
       // rs1
-      for (k <- 0 until 2)
-        io.enqs(j).enq.bits.rs1 := CoreUtils.bypassBroadcast(inReg(i).rs1, io.broadcast.entries(k))
+      for (k <- 0 until 2) {
+        io.enqs(j).enq.bits.rs1 := inReg(i).rs1
+        CoreUtils.matchBroadcast(io.enqs(j).enq.bits.rs1, inReg(i).rs1, io.broadcast.entries(k))
+      }
+
       // rs2
-      for (k <- 0 until 2)
-        io.enqs(j).enq.bits.rs2 := CoreUtils.bypassBroadcast(inReg(i).rs2, io.broadcast.entries(k))
+      for (k <- 0 until 2) {
+        io.enqs(j).enq.bits.rs2 := inReg(i).rs2
+        CoreUtils.matchBroadcast(io.enqs(j).enq.bits.rs2, inReg(i).rs2, io.broadcast.entries(k))
+      }
 
       io.enqs(j).enq.bits.rd := inReg(i).rd
       io.enqs(j).enq.bits.func3 := inReg(i).func3

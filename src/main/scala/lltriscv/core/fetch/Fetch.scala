@@ -319,7 +319,7 @@ class InstructionExtender extends Module {
             instructionOut := eimm(11, 0) ## instructionIn(11, 7) ## "b000".U(3.W) ## instructionIn(11, 7) ## "b0010011".U(7.W)
           }
           is("b001".U) { // c.jal
-            imm := instructionIn(12) ## instructionIn(8) ## instructionIn(10, 9) ## instructionIn(6) ## instructionIn(7) ## instructionIn(2) ## instructionIn(11) ## instructionIn(4, 2) ## 0.U
+            imm := instructionIn(12) ## instructionIn(8) ## instructionIn(10, 9) ## instructionIn(6) ## instructionIn(7) ## instructionIn(2) ## instructionIn(11) ## instructionIn(5, 3) ## 0.U
             eimm := CoreUtils.signExtended(imm, 11)
             instructionOut := eimm(20) ## eimm(10, 1) ## eimm(11) ## eimm(19, 12) ## "b00001".U(5.W) ## "b1101111".U(7.W)
           }
@@ -375,7 +375,7 @@ class InstructionExtender extends Module {
           }
 
           is("b101".U) { // c.j
-            imm := instructionIn(12) ## instructionIn(8) ## instructionIn(10, 9) ## instructionIn(6) ## instructionIn(7) ## instructionIn(2) ## instructionIn(11) ## instructionIn(4, 2) ## 0.U
+            imm := instructionIn(12) ## instructionIn(8) ## instructionIn(10, 9) ## instructionIn(6) ## instructionIn(7) ## instructionIn(2) ## instructionIn(11) ## instructionIn(5, 3) ## 0.U
             eimm := CoreUtils.signExtended(imm, 11)
             instructionOut := eimm(20) ## eimm(10, 1) ## eimm(11) ## eimm(19, 12) ## "b00000".U(5.W) ## "b1101111".U(7.W)
           }

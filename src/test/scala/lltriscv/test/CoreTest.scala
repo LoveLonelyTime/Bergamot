@@ -26,7 +26,7 @@ class RegisterMappingTableTest extends AnyFreeSpec with ChiselScalatestTester {
       memory.importBin(new File("boot.bin"), 0)
       memory.importBin(new File("test.bin"), 12288)
       var run = true
-      // for (i <- 0 until 500) {
+      // for (i <- 0 until 1000) {
       while (run) {
         // Read write memory
         dut.io.smaReader.ready.poke(false.B)

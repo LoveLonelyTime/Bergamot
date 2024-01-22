@@ -47,8 +47,10 @@ class RegisterMappingTable extends Module {
     io.mapping.mappingGroup(0).rs1.receipt := 0.U
   }.otherwise {
     // Broadcast bypass
+    io.mapping.mappingGroup(0).rs1 := table(io.mapping.regGroup(0).rs1).content
     for (i <- 0 until 2)
-      io.mapping.mappingGroup(0).rs1 := CoreUtils.bypassBroadcast(
+      CoreUtils.matchBroadcast(
+        io.mapping.mappingGroup(0).rs1,
         table(io.mapping.regGroup(0).rs1).content,
         io.broadcast.entries(i)
       )
@@ -60,8 +62,10 @@ class RegisterMappingTable extends Module {
     io.mapping.mappingGroup(0).rs2.receipt := 0.U
   }.otherwise {
     // Broadcast bypass
+    io.mapping.mappingGroup(0).rs2 := table(io.mapping.regGroup(0).rs2).content
     for (i <- 0 until 2)
-      io.mapping.mappingGroup(0).rs2 := CoreUtils.bypassBroadcast(
+      CoreUtils.matchBroadcast(
+        io.mapping.mappingGroup(0).rs2,
         table(io.mapping.regGroup(0).rs2).content,
         io.broadcast.entries(i)
       )
@@ -78,9 +82,11 @@ class RegisterMappingTable extends Module {
     io.mapping.mappingGroup(1).rs1.pending := true.B
     io.mapping.mappingGroup(1).rs1.receipt := io.mapping.mappingGroup(0).rd
   }.otherwise {
+    io.mapping.mappingGroup(1).rs1 := table(io.mapping.regGroup(1).rs1).content
     // Broadcast bypass
     for (i <- 0 until 2)
-      io.mapping.mappingGroup(1).rs1 := CoreUtils.bypassBroadcast(
+      CoreUtils.matchBroadcast(
+        io.mapping.mappingGroup(1).rs1,
         table(io.mapping.regGroup(1).rs1).content,
         io.broadcast.entries(i)
       )
@@ -94,9 +100,11 @@ class RegisterMappingTable extends Module {
     io.mapping.mappingGroup(1).rs2.pending := true.B
     io.mapping.mappingGroup(1).rs2.receipt := io.mapping.mappingGroup(0).rd
   }.otherwise {
+    io.mapping.mappingGroup(1).rs2 := table(io.mapping.regGroup(1).rs2).content
     // Broadcast bypass
     for (i <- 0 until 2)
-      io.mapping.mappingGroup(1).rs2 := CoreUtils.bypassBroadcast(
+      CoreUtils.matchBroadcast(
+        io.mapping.mappingGroup(1).rs2,
         table(io.mapping.regGroup(1).rs2).content,
         io.broadcast.entries(i)
       )
@@ -114,7 +122,7 @@ class RegisterMappingTable extends Module {
     j <- 0 until 2
   ) {
 
-    CoreUtils.matchBroadcast(table(i).content, io.broadcast.entries(j))
+    CoreUtils.matchBroadcast(table(i).content, table(i).content, io.broadcast.entries(j))
   }
 
   // Write table

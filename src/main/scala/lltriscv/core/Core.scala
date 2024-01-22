@@ -35,6 +35,7 @@ import lltriscv.core.record.CSRs
 import lltriscv.core.record.ROB
 import decode.Decode
 import lltriscv.cache.Parallel2Flusher
+import lltriscv.core.execute.OutOfOrderedExecuteQueue
 
 /** Core config class
   *
@@ -225,11 +226,11 @@ class CoreExecute(config: CoreConfig) extends Module {
   })
 
   private val aluExecuteQueue =
-    Module(new InOrderedExecuteQueue(config.executeQueueDepth, ExecuteQueueType.alu))
+    Module(new OutOfOrderedExecuteQueue(config.executeQueueDepth, ExecuteQueueType.alu))
   private val alu = Module(new ALU())
 
   private val branchExecuteQueue =
-    Module(new InOrderedExecuteQueue(config.executeQueueDepth, ExecuteQueueType.branch))
+    Module(new OutOfOrderedExecuteQueue(config.executeQueueDepth, ExecuteQueueType.branch))
   private val branch = Module(new Branch())
 
   private val memoryExecuteQueue =
