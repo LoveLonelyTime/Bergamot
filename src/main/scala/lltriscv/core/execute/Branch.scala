@@ -195,6 +195,8 @@ class BranchExecuteStage extends Module {
 
   io.out.bits.result := inReg.next // Save next PC
 
+  // This is a branch
+  io.out.bits.branch := true.B
   io.out.bits.rd := inReg.rd
   io.out.bits.pc := inReg.pc
   io.out.bits.next := inReg.next

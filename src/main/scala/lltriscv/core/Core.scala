@@ -36,6 +36,7 @@ import lltriscv.core.record.ROB
 import decode.Decode
 import lltriscv.cache.Parallel2Flusher
 import lltriscv.core.execute.OutOfOrderedExecuteQueue
+import lltriscv.core.fetch.BranchPredictorUpdateIO
 
 /** Core config class
   *
@@ -47,8 +48,9 @@ import lltriscv.core.execute.OutOfOrderedExecuteQueue
   * @param dTLBDepth
   * @param storeQueueDepth
   * @param robDepth
+  * @param predictorDepth
   */
-case class CoreConfig(val iTLBDepth: Int, val iCacheLineDepth: Int, val fetchQueueDepth: Int, val executeQueueWidth: Int, val executeQueueDepth: Int, val dTLBDepth: Int, val storeQueueDepth: Int, val robDepth: Int)
+case class CoreConfig(val iTLBDepth: Int, val iCacheLineDepth: Int, val fetchQueueDepth: Int, val executeQueueWidth: Int, val executeQueueDepth: Int, val dTLBDepth: Int, val storeQueueDepth: Int, val robDepth: Int, val predictorDepth: Int)
 
 object CoreConfig {
 
@@ -62,7 +64,8 @@ object CoreConfig {
     executeQueueDepth = 8,
     dTLBDepth = 8,
     storeQueueDepth = 8,
-    robDepth = 8
+    robDepth = 8,
+    predictorDepth = 8
   )
 }
 
@@ -113,6 +116,7 @@ class LLTRISCVCoreExq(config: CoreConfig) extends Module {
   coreBackend.io.iCacheFlush.empty := true.B
   coreBackend.io.tlbFlush <> tlbFlusher.io.in
   coreBackend.io.update <> coreFrontend.io.update
+  coreBackend.io.predictorUpdate <> coreFrontend.io.predictorUpdate
   coreBackend.io.store <> coreExecute.io.retire
 
   // TLBFlusher
@@ -139,6 +143,7 @@ class CoreFrontend(config: CoreConfig) extends Module {
     val alloc = Flipped(DecoupledIO(DataType.receipt))
     val tableWrite = new ROBTableWriteIO()
     val update = Flipped(new RegisterUpdateIO())
+    val predictorUpdate = Flipped(new BranchPredictorUpdateIO())
 
     val correctPC = Input(DataType.address)
     val recover = Input(Bool())
@@ -153,7 +158,7 @@ class CoreFrontend(config: CoreConfig) extends Module {
 
   private val itlb = Module(new TLB(config.iTLBDepth, false))
   private val iCache = Module(new TrivialICache(config.iCacheLineDepth))
-  private val fetch = Module(new Fetch(config.iCacheLineDepth, config.fetchQueueDepth))
+  private val fetch = Module(new Fetch(config.iCacheLineDepth, config.fetchQueueDepth, config.predictorDepth))
   private val decode = Module(new Decode(config.executeQueueWidth))
   private val registerMappingTable = Module(new RegisterMappingTable())
 
@@ -171,6 +176,8 @@ class CoreFrontend(config: CoreConfig) extends Module {
   iCache.io.flush <> io.iCacheFlush
 
   // Fetch
+  fetch.io.satp := io.satp
+  fetch.io.update <> io.predictorUpdate
   fetch.io.itlb <> itlb.io.request
   fetch.io.icache <> iCache.io.request
   fetch.io.recover := io.recover
@@ -327,6 +334,7 @@ class CoreBackend(config: CoreConfig) extends Module {
 
     val broadcast = new DataBroadcastIO()
     val update = new RegisterUpdateIO()
+    val predictorUpdate = new BranchPredictorUpdateIO()
     val store = new StoreQueueRetireIO()
     val recover = Output(new Bool())
     val correctPC = Output(DataType.address)
@@ -354,6 +362,7 @@ class CoreBackend(config: CoreConfig) extends Module {
   instructionRetire.io.retired <> rob.io.retired
   instructionRetire.io.tableRetire <> rob.io.tableRetire
   instructionRetire.io.update <> io.update
+  instructionRetire.io.predictorUpdate <> io.predictorUpdate
   instructionRetire.io.store <> io.store
   io.recover := instructionRetire.io.recover
   io.correctPC := instructionRetire.io.correctPC

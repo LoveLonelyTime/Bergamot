@@ -18,7 +18,7 @@ import lltriscv.core.execute.MemoryErrorCode
  * Copyright (C) 2024-2025 LoveLonelyTime
  */
 
-class Fetch(cacheLineDepth: Int, queueDepth: Int) extends Module {
+class Fetch(cacheLineDepth: Int, queueDepth: Int, predictorDepth: Int) extends Module {
   val io = IO(new Bundle {
     val itlb = new TLBRequestIO()
     val icache = new ICacheLineRequestIO(cacheLineDepth)
@@ -27,10 +27,13 @@ class Fetch(cacheLineDepth: Int, queueDepth: Int) extends Module {
     val correctPC = Input(DataType.address)
     // Recovery interface
     val recover = Input(Bool())
+
+    val satp = Input(DataType.operation)
+    val update = Flipped(new BranchPredictorUpdateIO())
   })
 
   private val instructionFetcher = Module(new InstructionFetcher(cacheLineDepth))
-  private val speculationStage = Module(new SpeculationStage())
+  private val speculationStage = Module(new SpeculationStage(predictorDepth))
   private val instructionQueue = Module(new InstructionQueue(queueDepth))
 
   speculationStage.io.in := instructionFetcher.io.out
@@ -41,6 +44,9 @@ class Fetch(cacheLineDepth: Int, queueDepth: Int) extends Module {
 
   instructionQueue.io.enq <> speculationStage.io.out
   instructionQueue.io.deq <> io.out
+
+  speculationStage.io.satp := io.satp
+  speculationStage.io.update <> io.update
 
   speculationStage.io.correctPC := io.correctPC
   speculationStage.io.recover := io.recover
@@ -472,25 +478,34 @@ class InstructionExtender extends Module {
 
 /** Instruction predictor
   */
-class InstructionPredictor extends Module {
+class InstructionPredictor(depth: Int) extends Module {
   val io = IO(new Bundle {
     val in = Input(Vec(2, new RawInstructionEntry()))
     val pc = Input(DataType.address)
     val out = Output(Vec(2, new SpeculativeEntry()))
     val nextPC = Output(DataType.address)
+
+    val asid = Input(DataType.asid)
+    val update = Flipped(new BranchPredictorUpdateIO())
   })
-  val pcValues = Wire(Vec(2, DataType.address))
+  private val pcValues = Wire(Vec(2, DataType.address))
   pcValues(0) := io.pc
   pcValues(1) := Mux(io.in(0).compress, io.pc + 2.U, io.pc + 4.U)
 
-  val nextPCValues = Wire(Vec(2, DataType.address))
+  private val nextPCValues = Wire(Vec(2, DataType.address))
   nextPCValues(0) := pcValues(1)
   nextPCValues(1) := Mux(io.in(1).compress, pcValues(1) + 2.U, pcValues(1) + 4.U)
 
-  // Trivial sepc
-  val specValues = Wire(Vec(2, DataType.address))
-  specValues(0) := Mux(io.in(0).compress, io.pc + 2.U, io.pc + 4.U)
-  specValues(1) := Mux(io.in(1).compress, specValues(0) + 2.U, specValues(0) + 4.U)
+  // Prediction
+  private val branchPredictor = Module(new TwoBitsBranchPredictor(depth))
+  private val specValues = Wire(Vec(2, DataType.address))
+  for (i <- 0 until 2) {
+    branchPredictor.io.resuest.in(i).pc := pcValues(i)
+    branchPredictor.io.resuest.in(i).compress := io.in(i).compress
+    specValues(i) := branchPredictor.io.resuest.out(i)
+  }
+  branchPredictor.io.asid := io.asid
+  branchPredictor.io.update <> io.update
 
   for (i <- 0 until 2) {
     io.out(i).instruction := io.in(i).instruction
@@ -516,12 +531,18 @@ class InstructionPredictor extends Module {
 /** Speculation stage
   *
   * Extend instructions and predict
+  *
+  * @param depth
+  *   Branch predictor table depth
   */
-class SpeculationStage extends Module {
+class SpeculationStage(depth: Int) extends Module {
   val io = IO(new Bundle {
     // Pipeline interface
     val in = Input(Vec(2, new RawInstructionEntry()))
     val out = DecoupledIO(Vec(2, new SpeculativeEntry()))
+
+    val satp = Input(DataType.operation)
+    val update = Flipped(new BranchPredictorUpdateIO())
     // Current PC
     val pc = Output(DataType.address)
     // Prediction failure and correction PC
@@ -537,9 +558,11 @@ class SpeculationStage extends Module {
   val extender = Module(new InstructionExtender())
   extender.io.in <> inReg
 
-  val predictor = Module(new InstructionPredictor())
+  val predictor = Module(new InstructionPredictor(depth))
   predictor.io.in <> extender.io.out
   predictor.io.pc := pcReg
+  predictor.io.asid := io.satp(30, 22)
+  predictor.io.update <> io.update
 
   when(io.out.fire) { // Sample
     inReg := io.in

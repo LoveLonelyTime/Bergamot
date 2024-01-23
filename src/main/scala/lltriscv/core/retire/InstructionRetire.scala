@@ -9,6 +9,7 @@ import lltriscv.core.record.CSRsWriteIO
 import lltriscv.core.record.ExceptionRequestIO
 import lltriscv.core.record.StoreQueueRetireIO
 import lltriscv.cache.FlushCacheIO
+import lltriscv.core.fetch.BranchPredictorUpdateIO
 
 /*
  * Instruction retire
@@ -35,6 +36,8 @@ class InstructionRetire(depth: Int) extends Module {
     val tableRetire = Flipped(new ROBTableRetireIO(depth))
     // Register update interface
     val update = new RegisterUpdateIO()
+    // Predictor update interface
+    val predictorUpdate = new BranchPredictorUpdateIO()
     // Store queue interface
     val store = new StoreQueueRetireIO()
     // Recovery interface
@@ -78,6 +81,14 @@ class InstructionRetire(depth: Int) extends Module {
     item.rd := 0.U
     item.result := 0.U
   })
+
+  io.predictorUpdate.entries.foreach(item => {
+    item.address := 0.U
+    item.jump := false.B
+    item.pc := 0.U
+    item.valid := false.B
+  })
+
   io.store.entries.foreach(item => {
     item.en := false.B
     item.id := 0.U
@@ -153,12 +164,23 @@ class InstructionRetire(depth: Int) extends Module {
     io.update.entries(id).rd := retireEntries(id).rd
     io.update.entries(id).result := retireEntries(id).executeResult.result
 
+    // Update predictor
+    when(retireEntries(id).executeResult.branch) {
+      updatePredictor(id)
+    }
     printf(
       "retired instruction: pc = %d , r = %d, v = %d\n",
       retireEntries(id).pc,
       retireEntries(id).executeResult.result,
       retireEntries(id).valid
     )
+  }
+
+  private def updatePredictor(id: Int) = {
+    io.predictorUpdate.entries(id).valid := true.B
+    io.predictorUpdate.entries(id).jump := retireEntries(id).executeResult.real =/= retireEntries(id).executeResult.next
+    io.predictorUpdate.entries(id).pc := retireEntries(id).pc
+    io.predictorUpdate.entries(id).address := retireEntries(id).executeResult.real
   }
 
   private def retireStoreQueue(id: Int) = {

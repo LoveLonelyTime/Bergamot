@@ -14,9 +14,9 @@ import lltriscv.core.execute.MemoryAccessLength
 import lltriscv.utils.ChiselUtils
 
 class RegisterMappingTableTest extends AnyFreeSpec with ChiselScalatestTester {
-  "Print verilog" in {
-    emitVerilog(new LLTRISCVCoreExq(CoreConfig.default), Array("--target-dir", "generated"))
-  }
+  // "Print verilog" in {
+  //   emitVerilog(new LLTRISCVCoreExq(CoreConfig.default), Array("--target-dir", "generated"))
+  // }
 
   "RegisterMappingTable should be OK" in {
     test(new LLTRISCVCoreExq(CoreConfig.default)).withAnnotations(
@@ -26,8 +26,10 @@ class RegisterMappingTableTest extends AnyFreeSpec with ChiselScalatestTester {
       memory.importBin(new File("boot.bin"), 0)
       memory.importBin(new File("test.bin"), 12288)
       var run = true
+      var cnt = 0
       // for (i <- 0 until 1000) {
       while (run) {
+        cnt = cnt + 1
         // Read write memory
         dut.io.smaReader.ready.poke(false.B)
         dut.io.smaReader.error.poke(false.B)
@@ -72,6 +74,8 @@ class RegisterMappingTableTest extends AnyFreeSpec with ChiselScalatestTester {
         }
         dut.clock.step()
       }
+
+      println(s"Run counter: ${cnt}")
     }
   }
 }

@@ -85,6 +85,9 @@ class ExecuteResultEntry extends Bundle {
   val flushICache = Bool()
   val flushTLB = Bool()
 
+  // Predictor field
+  val branch = Bool()
+
   val rd = DataType.receipt // Destination receipt
   val pc = DataType.address // Corresponding PC
   val next = DataType.address // Next PC
@@ -141,6 +144,7 @@ class ExecuteResultEntry extends Bundle {
     pc := 0.U
     next := 0.U
     real := 0.U
+    branch := false.B
     valid := false.B
   }
 }
