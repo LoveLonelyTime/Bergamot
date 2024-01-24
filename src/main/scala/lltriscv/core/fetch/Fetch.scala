@@ -18,7 +18,18 @@ import lltriscv.core.execute.MemoryErrorCode
  * Copyright (C) 2024-2025 LoveLonelyTime
  */
 
-class Fetch(cacheLineDepth: Int, queueDepth: Int, predictorDepth: Int) extends Module {
+/** Fetch components
+  *
+  * @param cacheLineDepth
+  *   Instruction cache line depth
+  * @param queueDepth
+  *   Instruction queue depth
+  * @param predictorDepth
+  *   Branch predictor table depth
+  * @param pcInit
+  *   The initial value of PC when booting the core
+  */
+class Fetch(cacheLineDepth: Int, queueDepth: Int, predictorDepth: Int, pcInit: Int) extends Module {
   val io = IO(new Bundle {
     val itlb = new TLBRequestIO()
     val icache = new ICacheLineRequestIO(cacheLineDepth)
@@ -33,7 +44,7 @@ class Fetch(cacheLineDepth: Int, queueDepth: Int, predictorDepth: Int) extends M
   })
 
   private val instructionFetcher = Module(new InstructionFetcher(cacheLineDepth))
-  private val speculationStage = Module(new SpeculationStage(predictorDepth))
+  private val speculationStage = Module(new SpeculationStage(predictorDepth, pcInit))
   private val instructionQueue = Module(new InstructionQueue(queueDepth))
 
   speculationStage.io.in := instructionFetcher.io.out
@@ -477,6 +488,8 @@ class InstructionExtender extends Module {
 }
 
 /** Instruction predictor
+  * @param depth
+  *   Branch predictor table depth
   */
 class InstructionPredictor(depth: Int) extends Module {
   val io = IO(new Bundle {
@@ -534,8 +547,10 @@ class InstructionPredictor(depth: Int) extends Module {
   *
   * @param depth
   *   Branch predictor table depth
+  * @param pcInit
+  *   The initial value of PC when booting the core
   */
-class SpeculationStage(depth: Int) extends Module {
+class SpeculationStage(depth: Int, pcInit: Int) extends Module {
   val io = IO(new Bundle {
     // Pipeline interface
     val in = Input(Vec(2, new RawInstructionEntry()))
@@ -550,8 +565,9 @@ class SpeculationStage(depth: Int) extends Module {
     // Recovery interface
     val recover = Input(Bool())
   })
+
   // PC register
-  private val pcReg = RegInit(DataType.address.zeroAsUInt)
+  private val pcReg = RegInit(pcInit.U(DataType.address.getWidth.W))
 
   // Pipeline logic
   private val inReg = RegInit(Vec(2, new RawInstructionEntry()).zero)

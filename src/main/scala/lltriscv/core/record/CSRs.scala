@@ -69,13 +69,23 @@ class CSRs extends Module {
 
     is("h180".U) { responseRead(satpReg) } // satp
 
+    is("hf14".U) { responseRead(DataType.operation.zeroAsUInt) } // mhartid
+
     is("h300".U) { responseRead(mstatusReg.mstatusView) } // mstatus
     is("h302".U) { responseRead(medelegReg) } // medeleg
+    is("h303".U) { responseRead(DataType.operation.zeroAsUInt) } // mideleg
+    is("h304".U) { responseRead(mstatusReg.mstatusView) } // mie
     is("h305".U) { responseRead(mtvecReg) } // mtvec
 
     is("h341".U) { responseRead(mepcReg) } // mepc
     is("h342".U) { responseRead(mcauseReg) } // mcause
     is("h343".U) { responseRead(mtvalReg) } // mtval
+
+    is("h744".U) { responseRead(DataType.operation.zeroAsUInt) } // mnstatus
+  }
+  // Unimplemented PMP
+  when(io.read.address(11, 4) in ("h3A".U, "h3B".U, "h3C".U, "h3D".U, "h3E".U)) {
+    responseRead(DataType.operation.zeroAsUInt)
   }
 
   // Write logic
@@ -88,6 +98,8 @@ class CSRs extends Module {
       is("h143".U) { stvalReg := io.write.data } // stval
 
       is("h180".U) { satpReg := io.write.data } // satp
+
+      // Ignore mhartid
 
       is("h300".U) { mstatusReg.writeMStatus(io.write.data) } // mstatus
       is("h302".U) { medelegReg := io.write.data } // medeleg

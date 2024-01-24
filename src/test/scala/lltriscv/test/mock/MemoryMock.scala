@@ -7,6 +7,8 @@ import chiseltest._
 import lltriscv.utils.ChiselUtils
 import java.io.File
 import java.io.FileInputStream
+import lltriscv.bus.SMAWriterIO
+import lltriscv.core.execute.MemoryAccessLength
 
 trait MemoryMock {
   def loadByte(addr: Int): Byte
@@ -43,6 +45,48 @@ trait MemoryFileMock extends MemoryMock {
     }
     in.close()
     println(s"Import from ${file.getName()} ${id} bytes.")
+  }
+}
+
+trait SMAMemoryMock extends MemoryMock {
+  def doMemory(reader: SMAReaderIO, writer: SMAWriterIO) = {
+    if (reader.valid.peekBoolean()) {
+      reader.ready.poke(true.B)
+      if (reader.readType.peek() == MemoryAccessLength.byte) {
+        reader.data.poke(ChiselUtils.int2UInt(loadByte(reader.address.peekInt().toInt)))
+      }
+
+      if (reader.readType.peek() == MemoryAccessLength.half) {
+        reader.data.poke(ChiselUtils.int2UInt(loadShort(reader.address.peekInt().toInt)))
+      }
+
+      if (reader.readType.peek() == MemoryAccessLength.word) {
+        // val addr = reader.address.peekInt().toInt
+        // println(s"Reader addr: ${addr}, data: ${memory.loadInt(addr)}")
+        reader.data.poke(ChiselUtils.int2UInt(loadInt(reader.address.peekInt().toInt)))
+      }
+    } else if (writer.valid.peekBoolean()) {
+      writer.ready.poke(true.B)
+
+      if (writer.writeType.peek() == MemoryAccessLength.byte) {
+        storeByte(writer.address.peekInt().toInt, ChiselUtils.BigInt2Int(writer.data.peekInt()).toByte)
+      }
+
+      if (writer.writeType.peek() == MemoryAccessLength.half) {
+        storeShort(writer.address.peekInt().toInt, ChiselUtils.BigInt2Int(writer.data.peekInt()).toShort)
+      }
+
+      if (writer.writeType.peek() == MemoryAccessLength.word) {
+        // val addr = writer.address.peekInt().toInt
+        // println(s"Writer addr: ${addr}, data: ${writer.data.peekInt()}")
+        // if (writer.address.peekInt().toInt == 12412) {
+        //   run = false
+        //   println(s"Writer addr: ${addr}, data: ${writer.data.peekInt()}")
+        // }
+        // if (writer.address.peekInt().toInt == 124) { run = false }
+        storeInt(writer.address.peekInt().toInt, ChiselUtils.BigInt2Int(writer.data.peekInt()))
+      }
+    }
   }
 }
 

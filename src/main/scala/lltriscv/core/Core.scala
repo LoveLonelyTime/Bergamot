@@ -38,6 +38,12 @@ import lltriscv.cache.Parallel2Flusher
 import lltriscv.core.execute.OutOfOrderedExecuteQueue
 import lltriscv.core.fetch.BranchPredictorUpdateIO
 
+/*
+ * LLT RISC-V Core Exquisite integration
+ *
+ * Copyright (C) 2024-2025 LoveLonelyTime
+ */
+
 /** Core config class
   *
   * @param iTLBDepth
@@ -49,8 +55,9 @@ import lltriscv.core.fetch.BranchPredictorUpdateIO
   * @param storeQueueDepth
   * @param robDepth
   * @param predictorDepth
+  * @param pcInit
   */
-case class CoreConfig(val iTLBDepth: Int, val iCacheLineDepth: Int, val fetchQueueDepth: Int, val executeQueueWidth: Int, val executeQueueDepth: Int, val dTLBDepth: Int, val storeQueueDepth: Int, val robDepth: Int, val predictorDepth: Int)
+case class CoreConfig(val iTLBDepth: Int, val iCacheLineDepth: Int, val fetchQueueDepth: Int, val executeQueueWidth: Int, val executeQueueDepth: Int, val dTLBDepth: Int, val storeQueueDepth: Int, val robDepth: Int, val predictorDepth: Int, pcInit: Int)
 
 object CoreConfig {
 
@@ -65,7 +72,8 @@ object CoreConfig {
     dTLBDepth = 8,
     storeQueueDepth = 8,
     robDepth = 8,
-    predictorDepth = 8
+    predictorDepth = 8,
+    pcInit = 0x0
   )
 }
 
@@ -158,7 +166,7 @@ class CoreFrontend(config: CoreConfig) extends Module {
 
   private val itlb = Module(new TLB(config.iTLBDepth, false))
   private val iCache = Module(new TrivialICache(config.iCacheLineDepth))
-  private val fetch = Module(new Fetch(config.iCacheLineDepth, config.fetchQueueDepth, config.predictorDepth))
+  private val fetch = Module(new Fetch(config.iCacheLineDepth, config.fetchQueueDepth, config.predictorDepth, config.pcInit))
   private val decode = Module(new Decode(config.executeQueueWidth))
   private val registerMappingTable = Module(new RegisterMappingTable())
 
