@@ -317,13 +317,13 @@ class ALUExecuteStage extends Module {
       io.out.bits.result := inReg.op1 ^ inReg.op2
     }
     is(ALUOperationType.sll) {
-      io.out.bits.result := inReg.op1 << inReg.op2(24, 20)
+      io.out.bits.result := inReg.op1 << inReg.op2(4, 0)
     }
     is(ALUOperationType.srl) {
-      io.out.bits.result := inReg.op1 >> inReg.op2(24, 20)
+      io.out.bits.result := inReg.op1 >> inReg.op2(4, 0)
     }
     is(ALUOperationType.sra) {
-      io.out.bits.result := (inReg.op1.asSInt >> inReg.op2(24, 20)).asUInt
+      io.out.bits.result := (inReg.op1.asSInt >> inReg.op2(4, 0)).asUInt
     }
     is(ALUOperationType.slt) {
       io.out.bits.result := Mux(inReg.op1.asSInt < inReg.op2.asSInt, 1.U, 0.U)

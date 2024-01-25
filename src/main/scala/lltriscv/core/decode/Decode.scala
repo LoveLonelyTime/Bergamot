@@ -142,6 +142,10 @@ class DecodeStage extends Module {
       is("b00011".U) {
         instructionType := InstructionType.I
       }
+      // A: lr, sc, amoswap, amoadd, amoxor, amoand, amoor, amomin, amomax, amominu, amomaxu
+      is("b01011".U) {
+        instructionType := InstructionType.R
+      }
     }
     io.out.bits(i).instructionType := instructionType
 
@@ -178,8 +182,8 @@ class DecodeStage extends Module {
       io.out.bits(i).func3 := 0.U
     }
 
-    // func7: R
-    when(instructionType in (InstructionType.R)) {
+    // func7: R/I(srli,srai)
+    when(instructionType in (InstructionType.R, InstructionType.I)) {
       io.out.bits(i).func7 := inReg(i).instruction(31, 25)
     }.otherwise {
       io.out.bits(i).func7 := 0.U
@@ -223,7 +227,7 @@ class DecodeStage extends Module {
       io.out.bits(i).executeQueue := ExecuteQueueType.alu
     }.elsewhen((io.out.bits(i).opcode(6, 2) in ("b11011".U, "b11001".U)) || instructionType === InstructionType.B) { // jal, jalr, branch
       io.out.bits(i).executeQueue := ExecuteQueueType.branch
-    }.elsewhen(io.out.bits(i).opcode(6, 2) === "b00000".U || instructionType === InstructionType.S) { // load, store
+    }.elsewhen((io.out.bits(i).opcode(6, 2) in ("b00000".U, "b01011".U)) || instructionType === InstructionType.S) { // load, store, lr, sc, amo
       io.out.bits(i).executeQueue := ExecuteQueueType.memory
     }.otherwise { // ALU
       io.out.bits(i).executeQueue := ExecuteQueueType.alu
@@ -404,14 +408,14 @@ class IssueStage(executeQueueWidth: Int) extends Module {
 
       // Broadcast bypass
       // rs1
+      io.enqs(j).enq.bits.rs1 := inReg(i).rs1
       for (k <- 0 until 2) {
-        io.enqs(j).enq.bits.rs1 := inReg(i).rs1
         CoreUtils.matchBroadcast(io.enqs(j).enq.bits.rs1, inReg(i).rs1, io.broadcast.entries(k))
       }
 
       // rs2
+      io.enqs(j).enq.bits.rs2 := inReg(i).rs2
       for (k <- 0 until 2) {
-        io.enqs(j).enq.bits.rs2 := inReg(i).rs2
         CoreUtils.matchBroadcast(io.enqs(j).enq.bits.rs2, inReg(i).rs2, io.broadcast.entries(k))
       }
 

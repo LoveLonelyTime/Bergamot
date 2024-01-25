@@ -203,6 +203,10 @@ class OutOfOrderedExecuteQueue(depth: Int, queueType: ExecuteQueueType.Type) ext
       is(State.two) {
         when(deqFire) {
           dataReg := shadowReg
+          for (i <- 0 until 2) { // Bypass
+            CoreUtils.matchBroadcast(dataReg.rs1, shadowReg.rs1, io.broadcast.entries(i))
+            CoreUtils.matchBroadcast(dataReg.rs2, shadowReg.rs2, io.broadcast.entries(i))
+          }
           stateReg := State.one
         }
       }

@@ -71,12 +71,13 @@ class StoreQueue(depth: Int) extends Module {
   private val op = (io.alloc.valid && io.alloc.ready) ##
     (io.deq.valid && io.deq.ready)
   private val doWrite = WireDefault(false.B)
-
+  private val doRead = WireDefault(false.B)
   switch(op) {
     is("b01".U) { // dequeue
       fullReg := false.B
       emptyReg := nextRead === writePtr
       incrRead := true.B
+      doRead := true.B
     }
     is("b10".U) { // alloc
       emptyReg := false.B
@@ -88,6 +89,7 @@ class StoreQueue(depth: Int) extends Module {
       incrRead := true.B
       incrWrite := true.B
       doWrite := true.B
+      doRead := true.B
     }
   }
 
@@ -98,6 +100,11 @@ class StoreQueue(depth: Int) extends Module {
     queue(writePtr).data := io.alloc.data
     queue(writePtr).valid := true.B
     queue(writePtr).retire := false.B
+  }
+
+  // Read logic
+  when(doRead) {
+    queue(readPtr).valid := false.B
   }
 
   // Bypass logic

@@ -107,14 +107,30 @@ class MemoryDecodeStage extends Module {
         is("b010".U) { io.out.bits.op := MemoryOperationType.sw }
       }
     }
+    is(InstructionType.R) {
+      switch(inReg.func7(6, 2)) {
+        is("b00010".U) { io.out.bits.op := MemoryOperationType.lw }
+        is("b00011".U) { io.out.bits.op := MemoryOperationType.sw }
+        is("b00001".U) { io.out.bits.op := MemoryOperationType.amoswap }
+        is("b00000".U) { io.out.bits.op := MemoryOperationType.amoadd }
+        is("b00100".U) { io.out.bits.op := MemoryOperationType.amoxor }
+        is("b01100".U) { io.out.bits.op := MemoryOperationType.amoand }
+        is("b01000".U) { io.out.bits.op := MemoryOperationType.amoor }
+        is("b10000".U) { io.out.bits.op := MemoryOperationType.amomin }
+        is("b10100".U) { io.out.bits.op := MemoryOperationType.amomax }
+        is("b11000".U) { io.out.bits.op := MemoryOperationType.amominu }
+        is("b11100".U) { io.out.bits.op := MemoryOperationType.amomaxu }
+      }
+    }
   }
 
   // add1 & add2
   io.out.bits.add1 := inReg.rs1.receipt
-  io.out.bits.add2 := CoreUtils.signExtended(inReg.imm, 11)
+  // For LR/SC and AMO, there is no immediate address
+  io.out.bits.add2 := Mux(inReg.instructionType === InstructionType.R, 0.U, CoreUtils.signExtended(inReg.imm, 11))
 
   // op1: the data stored
-  io.out.bits.op1 := Mux(inReg.instructionType === InstructionType.S, inReg.rs2.receipt, 0.U)
+  io.out.bits.op1 := inReg.rs2.receipt
 
   io.out.bits.rd := inReg.rd
   io.out.bits.pc := inReg.pc
@@ -313,18 +329,24 @@ class MemoryReadWriteStage extends Module {
   when(statusReg === Status.read) {
     io.sma.valid := true.B
     io.sma.address := inReg.paddress
-    switch(inReg.op) {
-      is(MemoryOperationType.lb) { io.sma.readType := MemoryAccessLength.byte }
-      is(MemoryOperationType.lbu) { io.sma.readType := MemoryAccessLength.byte }
-      is(MemoryOperationType.lh) { io.sma.readType := MemoryAccessLength.half }
-      is(MemoryOperationType.lhu) { io.sma.readType := MemoryAccessLength.half }
-      is(MemoryOperationType.lw) { io.sma.readType := MemoryAccessLength.word }
+
+    when(inReg.op in MemoryOperationType.byteValues) {
+      io.sma.readType := MemoryAccessLength.byte
+    }.elsewhen(inReg.op in MemoryOperationType.halfValues) {
+      io.sma.readType := MemoryAccessLength.half
+    }.elsewhen(inReg.op in MemoryOperationType.wordValues) {
+      io.sma.readType := MemoryAccessLength.word
     }
 
     when(io.sma.ready) {
-      statusReg := Status.idle
       readResult := io.sma.data
       readError := io.sma.error
+
+      when((inReg.op in MemoryOperationType.amoValues) && !readError) { // AMO
+        statusReg := Status.write
+      }.otherwise {
+        statusReg := Status.idle
+      }
     }
   }
 
@@ -333,14 +355,41 @@ class MemoryReadWriteStage extends Module {
   io.alloc.data := 0.U
   io.alloc.address := 0.U
   io.alloc.writeType := MemoryAccessLength.byte
+
   when(statusReg === Status.write) {
     io.alloc.valid := true.B
-    io.alloc.data := inReg.op1
-    io.alloc.address := inReg.paddress
+
+    // AMO
+    val writeData = WireInit(inReg.op1)
+    val gtu = WireInit(inReg.op1 > readResult)
+    val gt = WireInit(false.B)
+    val sign = inReg.op1(31) ## readResult(31)
+    switch(sign) {
+      is("b00".U) { gt := gtu }
+      is("b01".U) { gt := true.B }
+      is("b10".U) { gt := false.B }
+      is("b11".U) { gt := gtu }
+    }
     switch(inReg.op) {
-      is(MemoryOperationType.sb) { io.alloc.writeType := MemoryAccessLength.byte }
-      is(MemoryOperationType.sh) { io.alloc.writeType := MemoryAccessLength.half }
-      is(MemoryOperationType.sw) { io.alloc.writeType := MemoryAccessLength.word }
+      is(MemoryOperationType.amoadd) { writeData := readResult + inReg.op1 }
+      is(MemoryOperationType.amoxor) { writeData := readResult ^ inReg.op1 }
+      is(MemoryOperationType.amoand) { writeData := readResult & inReg.op1 }
+      is(MemoryOperationType.amoor) { writeData := readResult | inReg.op1 }
+      is(MemoryOperationType.amomax) { writeData := Mux(gt, inReg.op1, readResult) }
+      is(MemoryOperationType.amomaxu) { writeData := Mux(gtu, inReg.op1, readResult) }
+      is(MemoryOperationType.amomin) { writeData := Mux(gt, readResult, inReg.op1) }
+      is(MemoryOperationType.amominu) { writeData := Mux(gtu, readResult, inReg.op1) }
+    }
+
+    io.alloc.data := writeData
+    io.alloc.address := inReg.paddress
+
+    when(inReg.op in MemoryOperationType.byteValues) {
+      io.alloc.writeType := MemoryAccessLength.byte
+    }.elsewhen(inReg.op in MemoryOperationType.halfValues) {
+      io.alloc.writeType := MemoryAccessLength.half
+    }.elsewhen(inReg.op in MemoryOperationType.wordValues) {
+      io.alloc.writeType := MemoryAccessLength.word
     }
 
     when(io.alloc.ready) {
@@ -351,22 +400,17 @@ class MemoryReadWriteStage extends Module {
 
   // Result
   io.out.bits.noResult()
-  switch(inReg.op) {
-    is(MemoryOperationType.lb) {
-      io.out.bits.result := CoreUtils.signExtended(readResult, 7)
-    }
-    is(MemoryOperationType.lbu) {
-      io.out.bits.result := readResult(7, 0)
-    }
-    is(MemoryOperationType.lh) {
-      io.out.bits.result := CoreUtils.signExtended(readResult, 15)
-    }
-    is(MemoryOperationType.lhu) {
-      io.out.bits.result := readResult(15, 0)
-    }
-    is(MemoryOperationType.lw) {
-      io.out.bits.result := readResult
-    }
+
+  when(inReg.op === MemoryOperationType.lb) {
+    io.out.bits.result := CoreUtils.signExtended(readResult, 7)
+  }.elsewhen(inReg.op === MemoryOperationType.lbu) {
+    io.out.bits.result := readResult(7, 0)
+  }.elsewhen(inReg.op === MemoryOperationType.lh) {
+    io.out.bits.result := CoreUtils.signExtended(readResult, 15)
+  }.elsewhen(inReg.op === MemoryOperationType.lhu) {
+    io.out.bits.result := readResult(15, 0)
+  }.elsewhen(inReg.op === MemoryOperationType.lw || (inReg.op in MemoryOperationType.amoValues)) {
+    io.out.bits.result := readResult
   }
 
   when(inReg.op in MemoryOperationType.writeValues) {

@@ -50,6 +50,8 @@ trait MemoryFileMock extends MemoryMock {
 
 trait SMAMemoryMock extends MemoryMock {
   def doMemory(reader: SMAReaderIO, writer: SMAWriterIO) = {
+    reader.ready.poke(false.B)
+    writer.ready.poke(false.B)
     if (reader.valid.peekBoolean()) {
       reader.ready.poke(true.B)
       if (reader.readType.peek() == MemoryAccessLength.byte) {
@@ -77,8 +79,8 @@ trait SMAMemoryMock extends MemoryMock {
       }
 
       if (writer.writeType.peek() == MemoryAccessLength.word) {
-        // val addr = writer.address.peekInt().toInt
-        // println(s"Writer addr: ${addr}, data: ${writer.data.peekInt()}")
+        val addr = writer.address.peekInt().toInt
+        println(s"Writer addr: ${addr}, data: ${writer.data.peekInt()}")
         // if (writer.address.peekInt().toInt == 12412) {
         //   run = false
         //   println(s"Writer addr: ${addr}, data: ${writer.data.peekInt()}")
