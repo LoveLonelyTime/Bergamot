@@ -68,4 +68,15 @@ object CoreUtils {
       output.receipt := source.data
     }
   }
+
+  def Vec2[T <: Data](data: T) = Vec(2, data)
+  def VecInit2[T <: Data](data: T) = VecInit.fill(2)(data)
+
+  def isCompressInstruction(instruction: UInt) = instruction(1, 0) =/= "b11".U
+}
+
+object Sv32 {
+  def getVPN(vaddr: UInt) = vaddr(31, 12)
+  def getOffset(vaddr: UInt) = vaddr(11, 0)
+  def get32PPN(paddr: UInt) = paddr(31, 12)
 }

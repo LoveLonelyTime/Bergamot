@@ -186,7 +186,7 @@ class CoreFrontend(config: CoreConfig) extends Module {
   iCache.io.flush <> io.iCacheFlush
 
   // Fetch
-  fetch.io.satp := io.satp
+  fetch.io.asid := io.satp(30, 22)
   fetch.io.update <> io.predictorUpdate
   fetch.io.itlb <> itlb.io.request
   fetch.io.icache <> iCache.io.request

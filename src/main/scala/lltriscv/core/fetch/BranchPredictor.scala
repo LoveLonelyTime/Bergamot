@@ -11,7 +11,7 @@ abstract class BranchPredictor(depth: Int) extends Module {
 
   val io = IO(new Bundle {
     val asid = Input(DataType.asid)
-    val resuest = Flipped(new BranchPredictorRequestIO())
+    val request = Flipped(new BranchPredictorRequestIO())
     val update = Flipped(new BranchPredictorUpdateIO())
   })
 }
@@ -35,25 +35,25 @@ class TwoBitsBranchPredictor(depth: Int) extends BranchPredictor(depth) {
   // Output
   for (i <- 0 until 2) {
     // Default
-    io.resuest.out(i) := Mux(io.resuest.in(i).compress, io.resuest.in(i).pc + 2.U, io.resuest.in(i).pc + 4.U)
+    io.request.out(i) := Mux(io.request.in(i).compress, io.request.in(i).pc + 2.U, io.request.in(i).pc + 4.U)
     for (
       j <- 0 until depth;
       k <- 0 until 2
     ) {
-      when(io.resuest.in(i).pc === table(j)(k).pc && io.asid === table(j)(k).asid) {
+      when(io.request.in(i).pc === table(j)(k).pc && io.asid === table(j)(k).asid) {
         // Output logic table
         switch(table(j)(k).history) {
           is(History.NN) { // N
-            io.resuest.out(i) := Mux(io.resuest.in(i).compress, io.resuest.in(i).pc + 2.U, io.resuest.in(i).pc + 4.U)
+            io.request.out(i) := Mux(io.request.in(i).compress, io.request.in(i).pc + 2.U, io.request.in(i).pc + 4.U)
           }
           is(History.NT) { // T
-            io.resuest.out(i) := table(j)(k).address
+            io.request.out(i) := table(j)(k).address
           }
           is(History.TN) { // T
-            io.resuest.out(i) := table(j)(k).address
+            io.request.out(i) := table(j)(k).address
           }
           is(History.TT) { // T
-            io.resuest.out(i) := table(j)(k).address
+            io.request.out(i) := table(j)(k).address
           }
         }
       }

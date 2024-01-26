@@ -27,3 +27,9 @@ object DataType {
   def asid = UInt(9.W) // 9-bits address space ID
   def aByte = UInt(8.W) // A Byte
 }
+
+object CoreConstant {
+  val XLEN = 32
+  val instructionLength = 4
+  val compressInstructionLength = 2
+}

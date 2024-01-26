@@ -21,7 +21,7 @@ class ITLBWorkEntry extends Bundle {
 
 class ICacheLineWorkEntry extends Bundle {
   val content = Vec(8, UInt(16.W))
-  val pc = DataType.address
+  val address = DataType.address
   val error = MemoryErrorCode()
   val valid = Bool()
 }

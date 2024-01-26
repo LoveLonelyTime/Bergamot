@@ -187,6 +187,7 @@ class MemoryExecuteStage extends Module {
   ) {
     io.out.bits.error := MemoryErrorCode.misaligned
   }
+  chisel3.util.BitPat
 
   io.out.bits.rd := inReg.rd
   io.out.bits.pc := inReg.pc
