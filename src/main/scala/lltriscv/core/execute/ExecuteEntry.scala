@@ -88,6 +88,11 @@ class ExecuteResultEntry extends Bundle {
   // Predictor field
   val branch = Bool()
 
+  // LRSC field
+  val lr = Bool()
+  val lrAddress = DataType.address
+  val sc = Bool()
+
   val rd = DataType.receipt // Destination receipt
   val pc = DataType.address // Corresponding PC
   val next = DataType.address // Next PC
@@ -117,6 +122,11 @@ class ExecuteResultEntry extends Bundle {
     csrData := wdata
   }
 
+  def resultLR(addr: UInt) = {
+    lr := true.B
+    lrAddress := addr
+  }
+
   def noMemory() = {
     write := false.B
     writeID := 0.U
@@ -133,12 +143,19 @@ class ExecuteResultEntry extends Bundle {
     flushTLB := false.B
   }
 
+  def noLRSC() = {
+    lr := false.B
+    sc := false.B
+    lrAddress := 0.U
+  }
+
   def noResult() = {
     result := 0.U
     noException()
     noCSR()
     noMemory()
     noFlush()
+    noLRSC()
     xret := false.B
     rd := 0.U
     pc := 0.U

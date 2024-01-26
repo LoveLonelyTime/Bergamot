@@ -33,18 +33,22 @@ object MemoryOperationType extends ChiselEnum {
    * - amoand: read and and
    * - amomax(u): read and max(unsigned)
    * - amomin(u): read and min(unsigned)
+   *
+   * LR/SC operations:
+   * - lr: load reserved
+   * - sc: store conditional
    */
-  val none, undefined, lb, lh, lw, lbu, lhu, sb, sh, sw, amoswap, amoadd, amoxor, amoand, amoor, amomin, amomax, amominu, amomaxu = Value
+  val none, undefined, lb, lh, lw, lbu, lhu, sb, sh, sw, amoswap, amoadd, amoxor, amoand, amoor, amomin, amomax, amominu, amomaxu, lr, sc = Value
 
   // By type
   val amoValues = List(amoswap, amoadd, amoxor, amoand, amoor, amomin, amomax, amominu, amomaxu)
-  val readValues = List(lb, lh, lw, lbu, lhu) ::: amoValues
-  val writeValues = List(sb, sh, sw) ::: amoValues
+  val readValues = List(lb, lh, lw, lbu, lhu, lr) ::: amoValues
+  val writeValues = List(sb, sh, sw, sc) ::: amoValues
 
   // By width
   val byteValues = List(lb, lbu, sb)
   val halfValues = List(lh, lhu, sh)
-  val wordValues = List(lw, sw) ::: amoValues
+  val wordValues = List(lw, sw, lr, sc) ::: amoValues
 }
 
 /** Memory access length
@@ -62,6 +66,17 @@ object MemoryErrorCode extends ChiselEnum {
    * memoryFault: Memory fault
    */
   val none, misaligned, pageFault, memoryFault = Value
+}
+
+class LoadReservationEntry extends Bundle {
+  val address = DataType.address
+  val valid = Bool()
+}
+
+class UpdateLoadReservationIO extends Bundle {
+  val load = Output(Bool())
+  val address = Output(DataType.address)
+  val valid = Output(Bool())
 }
 
 /** Memory execute stage entry

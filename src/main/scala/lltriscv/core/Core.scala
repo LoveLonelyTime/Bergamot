@@ -37,6 +37,7 @@ import decode.Decode
 import lltriscv.cache.Parallel2Flusher
 import lltriscv.core.execute.OutOfOrderedExecuteQueue
 import lltriscv.core.fetch.BranchPredictorUpdateIO
+import lltriscv.core.execute.UpdateLoadReservationIO
 
 /*
  * LLT RISC-V Core Exquisite integration
@@ -124,6 +125,7 @@ class LLTRISCVCoreExq(config: CoreConfig) extends Module {
   coreBackend.io.iCacheFlush.empty := true.B
   coreBackend.io.tlbFlush <> tlbFlusher.io.in
   coreBackend.io.update <> coreFrontend.io.update
+  coreBackend.io.updateLoadReservation <> coreExecute.io.updateLoadReservation
   coreBackend.io.predictorUpdate <> coreFrontend.io.predictorUpdate
   coreBackend.io.store <> coreExecute.io.retire
 
@@ -233,6 +235,7 @@ class CoreExecute(config: CoreConfig) extends Module {
 
     val dTLBFlush = Flipped(new FlushCacheIO())
     val dCacheFlush = Flipped(new FlushCacheIO())
+    val updateLoadReservation = Flipped(new UpdateLoadReservationIO())
 
     val retire = Flipped(new StoreQueueRetireIO())
 
@@ -313,6 +316,7 @@ class CoreExecute(config: CoreConfig) extends Module {
   memory.io.dtlb <> dtlb.io.request
   memory.io.sma <> smaWithStoreQueueInterconnect.io.in
   memory.io.alloc <> storeQueue.io.alloc
+  memory.io.updateLoadReservation <> io.updateLoadReservation
   memory.io.recover := io.recover
   memoryExecuteQueue.io.broadcast <> io.broadcast
   memoryExecuteQueue.io.recover := io.recover
@@ -355,6 +359,8 @@ class CoreBackend(config: CoreConfig) extends Module {
     val dCacheFlush = new FlushCacheIO()
     val iCacheFlush = new FlushCacheIO()
     val tlbFlush = new FlushCacheIO()
+
+    val updateLoadReservation = new UpdateLoadReservationIO()
   })
   private val broadcaster = Module(new RoundRobinBroadcaster(config.executeQueueWidth))
   private val instructionRetire = Module(new InstructionRetire(config.robDepth))
@@ -370,6 +376,7 @@ class CoreBackend(config: CoreConfig) extends Module {
   instructionRetire.io.retired <> rob.io.retired
   instructionRetire.io.tableRetire <> rob.io.tableRetire
   instructionRetire.io.update <> io.update
+  instructionRetire.io.updateLoadReservation <> io.updateLoadReservation
   instructionRetire.io.predictorUpdate <> io.predictorUpdate
   instructionRetire.io.store <> io.store
   io.recover := instructionRetire.io.recover

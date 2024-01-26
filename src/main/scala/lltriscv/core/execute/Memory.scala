@@ -35,6 +35,7 @@ class Memory extends Module {
     val sma = new SMAReaderIO()
     // Store queue interface
     val alloc = new StoreQueueAllocIO()
+    val updateLoadReservation = Flipped(new UpdateLoadReservationIO())
     // Recovery logic
     val recover = Input(Bool())
   })
@@ -53,6 +54,7 @@ class Memory extends Module {
   memoryTLBStage.io.dtlb <> io.dtlb
   memoryReadWriteStage.io.sma <> io.sma
   memoryReadWriteStage.io.alloc <> io.alloc
+  memoryReadWriteStage.io.updateLoadReservation <> io.updateLoadReservation
 
   memoryDecodeStage.io.recover := io.recover
   memoryExecuteStage.io.recover := io.recover
@@ -109,8 +111,8 @@ class MemoryDecodeStage extends Module {
     }
     is(InstructionType.R) {
       switch(inReg.func7(6, 2)) {
-        is("b00010".U) { io.out.bits.op := MemoryOperationType.lw }
-        is("b00011".U) { io.out.bits.op := MemoryOperationType.sw }
+        is("b00010".U) { io.out.bits.op := MemoryOperationType.lr }
+        is("b00011".U) { io.out.bits.op := MemoryOperationType.sc }
         is("b00001".U) { io.out.bits.op := MemoryOperationType.amoswap }
         is("b00000".U) { io.out.bits.op := MemoryOperationType.amoadd }
         is("b00100".U) { io.out.bits.op := MemoryOperationType.amoxor }
@@ -289,9 +291,13 @@ class MemoryReadWriteStage extends Module {
     val sma = new SMAReaderIO()
     // Store queue interface
     val alloc = new StoreQueueAllocIO()
+    val updateLoadReservation = Flipped(new UpdateLoadReservationIO())
     // Recovery interface
     val recover = Input(Bool())
   })
+
+  private val loadReservation = RegInit(new LoadReservationEntry().zero)
+  private val recoveryLoadReservation = RegInit(new LoadReservationEntry().zero)
 
   private val statusReg = RegInit(Status.idle)
   private object Status extends ChiselEnum {
@@ -303,10 +309,18 @@ class MemoryReadWriteStage extends Module {
   private val readResult = RegInit(DataType.operation.zeroAsUInt)
   private val readError = RegInit(false.B)
   private val allocID = RegInit(DataType.receipt.zeroAsUInt)
+  private val scSuccess = inReg.vaddress === loadReservation.address && loadReservation.valid
+
   io.in.ready := statusReg === Status.idle && io.out.ready // Idle
 
   when(io.out.fire) { // Stall
     inReg.valid := false.B
+
+    // SC
+    when(inReg.op === MemoryOperationType.sc) {
+      // Clear load reservation
+      loadReservation.valid := false.B
+    }
   }
 
   when(io.in.fire) { // Sample
@@ -315,7 +329,9 @@ class MemoryReadWriteStage extends Module {
       when(io.in.bits.op in MemoryOperationType.readValues) {
         statusReg := Status.read
       }.elsewhen(io.in.bits.op in MemoryOperationType.writeValues) {
-        statusReg := Status.write
+        when(io.in.bits.op =/= MemoryOperationType.sc || scSuccess) { // SC
+          statusReg := Status.write
+        }
       }
     }
   }
@@ -341,6 +357,11 @@ class MemoryReadWriteStage extends Module {
     when(io.sma.ready) {
       readResult := io.sma.data
       readError := io.sma.error
+
+      when(inReg.op === MemoryOperationType.lr && !readError) { // lr
+        loadReservation.address := inReg.vaddress
+        loadReservation.valid := true.B
+      }
 
       when((inReg.op in MemoryOperationType.amoValues) && !readError) { // AMO
         statusReg := Status.write
@@ -401,6 +422,10 @@ class MemoryReadWriteStage extends Module {
   // Result
   io.out.bits.noResult()
 
+  when(inReg.op === MemoryOperationType.lr) {
+    io.out.bits.resultLR(inReg.vaddress)
+  }
+
   when(inReg.op === MemoryOperationType.lb) {
     io.out.bits.result := CoreUtils.signExtended(readResult, 7)
   }.elsewhen(inReg.op === MemoryOperationType.lbu) {
@@ -409,8 +434,11 @@ class MemoryReadWriteStage extends Module {
     io.out.bits.result := CoreUtils.signExtended(readResult, 15)
   }.elsewhen(inReg.op === MemoryOperationType.lhu) {
     io.out.bits.result := readResult(15, 0)
-  }.elsewhen(inReg.op === MemoryOperationType.lw || (inReg.op in MemoryOperationType.amoValues)) {
+  }.elsewhen(inReg.op in (MemoryOperationType.lw :: MemoryOperationType.lr :: MemoryOperationType.amoValues)) {
     io.out.bits.result := readResult
+  }.elsewhen(inReg.op === MemoryOperationType.sc) {
+    io.out.bits.result := Mux(scSuccess, 0.U, 1.U)
+    io.out.bits.sc := true.B
   }
 
   when(inReg.op in MemoryOperationType.writeValues) {
@@ -458,10 +486,22 @@ class MemoryReadWriteStage extends Module {
 
   io.out.valid := statusReg === Status.idle
 
+  // Update load reservation
+  when(io.updateLoadReservation.valid) {
+    when(io.updateLoadReservation.load) { // LR
+      recoveryLoadReservation.address := io.updateLoadReservation.address
+      recoveryLoadReservation.valid := true.B
+    }.otherwise { // SC
+      recoveryLoadReservation.valid := false.B
+    }
+  }
+
   // Recovery logic
   when(io.recover) {
     inReg.valid := false.B
     // Undo write FSM to prevent writing to store queue
     when(statusReg === Status.write) { statusReg := Status.idle }
+
+    loadReservation := recoveryLoadReservation
   }
 }

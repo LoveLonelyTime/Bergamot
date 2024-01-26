@@ -10,6 +10,7 @@ import lltriscv.core.record.ExceptionRequestIO
 import lltriscv.core.record.StoreQueueRetireIO
 import lltriscv.cache.FlushCacheIO
 import lltriscv.core.fetch.BranchPredictorUpdateIO
+import lltriscv.core.execute.UpdateLoadReservationIO
 
 /*
  * Instruction retire
@@ -47,6 +48,8 @@ class InstructionRetire(depth: Int) extends Module {
     val csr = new CSRsWriteIO()
     // Exception interface
     val exception = new ExceptionRequestIO()
+
+    val updateLoadReservation = new UpdateLoadReservationIO()
 
     // Flush interface
     val dCacheFlush = new FlushCacheIO()
@@ -106,6 +109,10 @@ class InstructionRetire(depth: Int) extends Module {
   io.dCacheFlush.req := false.B
   io.iCacheFlush.req := false.B
   io.tlbFlush.req := false.B
+
+  io.updateLoadReservation.load := false.B
+  io.updateLoadReservation.address := 0.U
+  io.updateLoadReservation.valid := false.B
 
   private def gotoExceptionHandler(id: Int) = {
     io.recover := true.B
@@ -196,6 +203,17 @@ class InstructionRetire(depth: Int) extends Module {
     io.csr.data := retireEntries(id).executeResult.csrData
   }
 
+  private def updateLoadReservation(id: Int) = {
+    when(retireEntries(id).executeResult.sc) {
+      io.updateLoadReservation.load := false.B
+      io.updateLoadReservation.valid := true.B
+    }.elsewhen(retireEntries(id).executeResult.lr) {
+      io.updateLoadReservation.load := true.B
+      io.updateLoadReservation.address := retireEntries(id).executeResult.lrAddress
+      io.updateLoadReservation.valid := true.B
+    }
+  }
+
   io.retired.ready := false.B
   when(statusReg === Status.retire) {
     when(io.retired.valid && retireValid(0) && retireValid(1)) {
@@ -216,6 +234,7 @@ class InstructionRetire(depth: Int) extends Module {
       }.otherwise { // Normal 0
         when(retireEntries(0).valid) {
           updateRegister(0)
+          updateLoadReservation(0)
           retireStoreQueue(0)
         }
 
@@ -235,6 +254,7 @@ class InstructionRetire(depth: Int) extends Module {
           flushID := 1.U
         }.otherwise { // Normal 1
           when(retireEntries(1).valid) {
+            updateLoadReservation(1)
             updateRegister(1)
             retireStoreQueue(1)
           }

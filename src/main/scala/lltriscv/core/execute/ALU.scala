@@ -344,16 +344,16 @@ class ALUExecuteStage extends Module {
       io.out.bits.result := (inReg.op1 * inReg.op2)(63, 32)
     }
     is(ALUOperationType.div) {
-      io.out.bits.result := (inReg.op1.asSInt / inReg.op2.asSInt).asUInt
+      io.out.bits.result := Mux(inReg.op2 === 0.U, "hffffffff".U, (inReg.op1.asSInt / inReg.op2.asSInt).asUInt)
     }
     is(ALUOperationType.divu) {
-      io.out.bits.result := inReg.op1 / inReg.op2
+      io.out.bits.result := Mux(inReg.op2 === 0.U, "hffffffff".U, inReg.op1 / inReg.op2)
     }
     is(ALUOperationType.rem) {
-      io.out.bits.result := (inReg.op1.asSInt % inReg.op2.asSInt).asUInt
+      io.out.bits.result := Mux(inReg.op2 === 0.U, inReg.op1, (inReg.op1.asSInt % inReg.op2.asSInt).asUInt)
     }
     is(ALUOperationType.remu) {
-      io.out.bits.result := inReg.op1 % inReg.op2
+      io.out.bits.result := Mux(inReg.op2 === 0.U, inReg.op1, inReg.op1 % inReg.op2)
     }
     is(ALUOperationType.csrrw) {
       io.out.bits.result := inReg.op1
