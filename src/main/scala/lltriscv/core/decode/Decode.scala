@@ -4,19 +4,25 @@ import chisel3._
 import chisel3.util._
 
 import lltriscv.core._
-import lltriscv.core.record._
-import lltriscv.core.execute._
-import lltriscv.utils.CoreUtils
-import lltriscv.utils.ChiselUtils._
 import lltriscv.core.broadcast.DataBroadcastIO
+import lltriscv.core.record.RegisterMappingIO
+import lltriscv.core.execute.ExecuteQueueEnqueueIO
+import lltriscv.core.record.ROBTableWriteIO
+import lltriscv.core.execute.MemoryErrorCode
+import lltriscv.core.execute.ExecuteQueueType
+
+import lltriscv.utils.CoreUtils._
+import lltriscv.utils.ChiselUtils._
 
 /*
- * Decode components
+ * Instruction decode
+ *
+ * The decoder decodes instructions and dispatches them according to the type of execution queue.
  *
  * Copyright (C) 2024-2025 LoveLonelyTime
  */
 
-/** Instruction decode
+/** Decode components
   *
   * The instruction decoding stage is divided into three cycles: DecodeStage -> RegisterMappingStage -> IssueStage.
   *
@@ -24,10 +30,8 @@ import lltriscv.core.broadcast.DataBroadcastIO
   *   Execute queue width
   */
 class Decode(executeQueueWidth: Int) extends Module {
-  require(executeQueueWidth > 0, "Execute queue depth must be greater than 0")
-
   val io = IO(new Bundle {
-    val in = Flipped(DecoupledIO(Vec(2, new DecodeStageEntry())))
+    val in = Flipped(DecoupledIO(Vec2(new DecodeStageEntry())))
     // Mapping interface
     val mapping = new RegisterMappingIO()
     // Broadcast interface
@@ -35,7 +39,7 @@ class Decode(executeQueueWidth: Int) extends Module {
     // Execute queue interface
     val enqs = Vec(executeQueueWidth, new ExecuteQueueEnqueueIO())
     // ROB table write interface
-    val tableWrite = new ROBTableWriteIO()
+    val robTableWrite = new ROBTableWriteIO()
     // Recovery interface
     val recover = Input(Bool())
   })
@@ -51,7 +55,7 @@ class Decode(executeQueueWidth: Int) extends Module {
   issueStage.io.enqs <> io.enqs
 
   registerMappingStage.io.mapping <> io.mapping
-  registerMappingStage.io.tableWrite <> io.tableWrite
+  registerMappingStage.io.robTableWrite <> io.robTableWrite
 
   issueStage.io.broadcast <> io.broadcast
 
@@ -69,13 +73,13 @@ class Decode(executeQueueWidth: Int) extends Module {
 class DecodeStage extends Module {
   val io = IO(new Bundle {
     // Pipeline interface
-    val in = Flipped(DecoupledIO(Vec(2, new DecodeStageEntry())))
-    val out = DecoupledIO(Vec(2, new RegisterMappingStageEntry()))
+    val in = Flipped(DecoupledIO(Vec2(new DecodeStageEntry())))
+    val out = DecoupledIO(Vec2(new RegisterMappingStageEntry()))
     // Recovery interface
     val recover = Input(Bool())
   })
   // Pipeline logic
-  private val inReg = RegInit(Vec(2, new DecodeStageEntry()).zero)
+  private val inReg = RegInit(Vec2(new DecodeStageEntry()).zero)
 
   io.in.ready := io.out.ready
   when(io.out.fire) { // Stall
@@ -86,13 +90,13 @@ class DecodeStage extends Module {
   }
 
   // Decode logic
-  for (i <- 0 until 2) {
+  inReg.zip(io.out.bits).foreach { case (in, out) =>
     // opcode
-    io.out.bits(i).opcode := inReg(i).instruction(6, 0)
+    out.opcode := in.instruction(6, 0)
 
     // Instruction Type
     val instructionType = WireInit(InstructionType.UK)
-    switch(inReg(i).instruction(6, 2)) {
+    switch(in.instruction(6, 2)) {
       // I: lui
       is("b01101".U) {
         instructionType := InstructionType.U
@@ -131,7 +135,7 @@ class DecodeStage extends Module {
         instructionType := InstructionType.I
       }
       // Zicsr: csrrw, csrrs, csrrc, csrrwi, csrrsi, csrrci
-      // I: ecall, ebreak
+      // I: ecall, ebreak, wfi, sfence.vma
       // M-Level: mret
       // S-Level: sret
       is("b11100".U) {
@@ -147,97 +151,75 @@ class DecodeStage extends Module {
         instructionType := InstructionType.R
       }
     }
-    io.out.bits(i).instructionType := instructionType
+    out.instructionType := instructionType
 
-    // rs1Tozimm
-    val rs1Tozimm = inReg(i).instruction(6, 2) === "b11100".U && inReg(i).instruction(14)
+    // rs1Tozimm (csrrwi, csrrsi, csrrci)
+    // zimm can not occupy the position of rs1
+    val rs1Tozimm = in.instruction(6, 2) === "b11100".U && in.instruction(14)
 
     // rd: R/I/U/J
     when(instructionType in (InstructionType.R, InstructionType.I, InstructionType.U, InstructionType.J)) {
-      io.out.bits(i).rd := inReg(i).instruction(11, 7)
+      out.rd := in.instruction(11, 7)
     }.otherwise {
-      io.out.bits(i).rd := 0.U
+      out.rd := 0.U
     }
 
     // rs1(zimm): R/I/S/B
     when(instructionType in (InstructionType.R, InstructionType.I, InstructionType.S, InstructionType.B)) {
-      io.out.bits(i).zimm := Mux(rs1Tozimm, inReg(i).instruction(19, 15), 0.U)
-      io.out.bits(i).rs1 := Mux(rs1Tozimm, 0.U, inReg(i).instruction(19, 15))
+      out.zimm := Mux(rs1Tozimm, in.instruction(19, 15), 0.U)
+      out.rs1 := Mux(rs1Tozimm, 0.U, in.instruction(19, 15))
     }.otherwise {
-      io.out.bits(i).zimm := 0.U
-      io.out.bits(i).rs1 := 0.U
+      out.zimm := 0.U
+      out.rs1 := 0.U
     }
 
     // rs2: R/S/B
     when(instructionType in (InstructionType.R, InstructionType.S, InstructionType.B)) {
-      io.out.bits(i).rs2 := inReg(i).instruction(24, 20)
+      out.rs2 := in.instruction(24, 20)
     }.otherwise {
-      io.out.bits(i).rs2 := 0.U
+      out.rs2 := 0.U
     }
 
     // func3: R/I/S/B
     when(instructionType in (InstructionType.R, InstructionType.I, InstructionType.S, InstructionType.B)) {
-      io.out.bits(i).func3 := inReg(i).instruction(14, 12)
+      out.func3 := in.instruction(14, 12)
     }.otherwise {
-      io.out.bits(i).func3 := 0.U
+      out.func3 := 0.U
     }
 
-    // func7: R/I(srli,srai)
+    // func7: R/I (srli,srai)
     when(instructionType in (InstructionType.R, InstructionType.I)) {
-      io.out.bits(i).func7 := inReg(i).instruction(31, 25)
+      out.func7 := in.instruction(31, 25)
     }.otherwise {
-      io.out.bits(i).func7 := 0.U
+      out.func7 := 0.U
     }
 
-    // imm
-    io.out.bits(i).imm := 0.U
-    switch(instructionType) {
-      is(InstructionType.I) {
-        io.out.bits(i).imm := 0.U(20.W) ## inReg(i).instruction(31, 20)
-      }
-      is(InstructionType.S) {
-        io.out.bits(i).imm := 0.U(20.W) ##
-          inReg(i).instruction(31, 25) ##
-          inReg(i).instruction(11, 7)
-      }
-      is(InstructionType.B) {
-        io.out.bits(i).imm := 0.U(19.W) ##
-          inReg(i).instruction(31) ##
-          inReg(i).instruction(7) ##
-          inReg(i).instruction(30, 25) ##
-          inReg(i).instruction(11, 8) ##
-          0.U(1.W)
-      }
-      is(InstructionType.U) {
-        io.out.bits(i).imm := inReg(i).instruction(31, 12) ##
-          0.U(12.W)
-      }
-      is(InstructionType.J) {
-        io.out.bits(i).imm := 0.U(11.W) ##
-          inReg(i).instruction(31) ##
-          inReg(i).instruction(19, 12) ##
-          inReg(i).instruction(20) ##
-          inReg(i).instruction(30, 21) ##
-          0.U(1.W)
-      }
-    }
+    // imm decode table
+    out.imm := MuxLookup(instructionType, 0.U)(
+      Seq(
+        InstructionType.I -> 0.U(20.W) ## in.instruction(31, 20),
+        InstructionType.S -> 0.U(20.W) ## in.instruction(31, 25) ## in.instruction(11, 7),
+        InstructionType.B -> 0.U(19.W) ## in.instruction(31) ## in.instruction(7) ## in.instruction(30, 25) ## in.instruction(11, 8) ## 0.U,
+        InstructionType.U -> in.instruction(31, 12) ## 0.U(12.W),
+        InstructionType.J -> 0.U(11.W) ## in.instruction(31) ## in.instruction(19, 12) ## in.instruction(20) ## in.instruction(30, 21) ## 0.U
+      )
+    )
 
-    // Execute queue arbitration
-    when(io.out.bits(i).error =/= MemoryErrorCode.none) { // Instruction cache line error
-      io.out.bits(i).executeQueue := ExecuteQueueType.alu
-    }.elsewhen((io.out.bits(i).opcode(6, 2) in ("b11011".U, "b11001".U)) || instructionType === InstructionType.B) { // jal, jalr, branch
-      io.out.bits(i).executeQueue := ExecuteQueueType.branch
-    }.elsewhen((io.out.bits(i).opcode(6, 2) in ("b00000".U, "b01011".U)) || instructionType === InstructionType.S) { // load, store, lr, sc, amo
-      io.out.bits(i).executeQueue := ExecuteQueueType.memory
-    }.otherwise { // ALU
-      io.out.bits(i).executeQueue := ExecuteQueueType.alu
-    }
+    // Execute queue arbitration table
+    out.executeQueue := MuxCase(
+      ExecuteQueueType.alu, // Default ALU
+      Seq(
+        (in.error =/= MemoryErrorCode.none || instructionType === InstructionType.UK) -> ExecuteQueueType.alu, // Exception handler
+        ((out.opcode(6, 2) in ("b11011".U, "b11001".U)) || instructionType === InstructionType.B) -> ExecuteQueueType.branch, // jal, jalr, branch
+        ((out.opcode(6, 2) in ("b00000".U, "b01011".U)) || instructionType === InstructionType.S) -> ExecuteQueueType.memory // load, store, lr, sc, amo
+      )
+    )
 
-    io.out.bits(i).pc := inReg(i).pc
-    io.out.bits(i).next := inReg(i).next
-    io.out.bits(i).spec := inReg(i).spec
-    io.out.bits(i).error := inReg(i).error
-    io.out.bits(i).valid := inReg(i).valid
+    out.pc := in.pc
+    out.next := in.next
+    out.spec := in.spec
+    out.error := in.error
+    out.valid := in.valid
   }
 
   io.out.valid := true.B // No wait
@@ -257,18 +239,18 @@ class DecodeStage extends Module {
 class RegisterMappingStage extends Module {
   val io = IO(new Bundle {
     // Pipeline interface
-    val in = Flipped(DecoupledIO(Vec(2, new RegisterMappingStageEntry())))
-    val out = DecoupledIO(Vec(2, new IssueStageEntry()))
+    val in = Flipped(DecoupledIO(Vec2(new RegisterMappingStageEntry())))
+    val out = DecoupledIO(Vec2(new IssueStageEntry()))
     // Mapping interface
     val mapping = new RegisterMappingIO()
     // ROBTable interface
-    val tableWrite = new ROBTableWriteIO()
+    val robTableWrite = new ROBTableWriteIO()
     // Recovery logic
     val recover = Input(Bool())
   })
 
   // Pipeline logic
-  private val inReg = RegInit(Vec(2, new RegisterMappingStageEntry()).zero)
+  private val inReg = RegInit(Vec2(new RegisterMappingStageEntry()).zero)
 
   // Waiting for mapping
   io.in.ready := io.mapping.ready && io.out.ready
@@ -279,49 +261,52 @@ class RegisterMappingStage extends Module {
     inReg := io.in.bits
   }
 
+  io.mapping <> new RegisterMappingIO().zero
+
   // Mapping logic
   io.mapping.valid := io.out.ready
-  for (i <- 0 until 2) {
-    val mappingValid = inReg(i).valid && inReg(i).error === MemoryErrorCode.none
-    // rs1
-    io.mapping.regGroup(i).rs1 := Mux(mappingValid, inReg(i).rs1, 0.U)
-    // rs2
-    io.mapping.regGroup(i).rs2 := Mux(mappingValid, inReg(i).rs2, 0.U)
-    // rd
-    io.mapping.regGroup(i).rd := Mux(mappingValid, inReg(i).rd, 0.U)
+  inReg.zip(io.mapping.regGroup).foreach { case (in, regGroup) =>
+    when(in.valid && in.error === MemoryErrorCode.none) {
+      regGroup.rs1 := in.rs1
+      regGroup.rs2 := in.rs2
+      regGroup.rd := in.rd
+    }
   }
 
   // Output logic
-  for (i <- 0 until 2) {
-    io.out.bits(i).opcode := inReg(i).opcode
-    io.out.bits(i).instructionType := inReg(i).instructionType
-    io.out.bits(i).executeQueue := inReg(i).executeQueue
+  io.out.bits
+    .zip(io.robTableWrite.entries)
+    .zip(inReg.zip(io.mapping.mappingGroup))
+    .foreach { case ((out, robTableWriteEntry), (in, mappingGroup)) =>
+      out.opcode := in.opcode
+      out.instructionType := in.instructionType
+      out.executeQueue := in.executeQueue
 
-    // Mapping result
-    io.out.bits(i).rs1 := io.mapping.mappingGroup(i).rs1
-    io.out.bits(i).rs2 := io.mapping.mappingGroup(i).rs2
-    io.out.bits(i).rd := io.mapping.mappingGroup(i).rd
+      // Mapping result
+      out.rs1 := mappingGroup.rs1
+      out.rs2 := mappingGroup.rs2
+      out.rd := mappingGroup.rd
 
-    io.out.bits(i).func3 := inReg(i).func3
-    io.out.bits(i).func7 := inReg(i).func7
-    io.out.bits(i).imm := inReg(i).imm
-    io.out.bits(i).zimm := inReg(i).zimm
+      out.func3 := in.func3
+      out.func7 := in.func7
+      out.imm := in.imm
+      out.zimm := in.zimm
 
-    io.out.bits(i).pc := inReg(i).pc
-    io.out.bits(i).next := inReg(i).next
-    io.out.bits(i).error := inReg(i).error
-    io.out.bits(i).valid := inReg(i).valid
+      out.pc := in.pc
+      out.next := in.next
+      out.error := in.error
+      out.valid := in.valid
 
-    // Write ROB table
-    io.tableWrite.entries(i).id := io.mapping.mappingGroup(i).rd
-    io.tableWrite.entries(i).pc := inReg(i).pc
-    io.tableWrite.entries(i).rd := inReg(i).rd
-    io.tableWrite.entries(i).spec := inReg(i).spec
-    io.tableWrite.entries(i).valid := inReg(i).valid
-  }
+      // Write ROB table
+      robTableWriteEntry.id := mappingGroup.rd
+      robTableWriteEntry.pc := in.pc
+      robTableWriteEntry.rd := in.rd
+      robTableWriteEntry.spec := in.spec
+      robTableWriteEntry.valid := in.valid
+    }
 
   // Synchronize with mapping
-  io.tableWrite.wen := io.mapping.valid && io.mapping.ready
+  io.robTableWrite.wen := io.mapping.valid && io.mapping.ready
 
   // Waiting for mapping
   io.out.valid := io.mapping.ready
@@ -336,7 +321,11 @@ class RegisterMappingStage extends Module {
   *
   * Instruction queue arbitration
   *
-  * Select executable instructions to the instruction queue. When the execution queue types of two instructions are different, two instructions can be issued at once. If two instructions are the same type, will be issued in two cycles.
+  * Select executable instructions to the instruction queue.
+  *
+  * When the execution queue types of two instructions are different, two instructions can be issued at once.
+  *
+  * If two instructions are the same type, will be issued in two cycles.
   *
   * Multicycle stage
   *
@@ -348,7 +337,7 @@ class IssueStage(executeQueueWidth: Int) extends Module {
 
   val io = IO(new Bundle {
     // Pipeline interface
-    val in = Flipped(DecoupledIO(Vec(2, new IssueStageEntry())))
+    val in = Flipped(DecoupledIO(Vec2(new IssueStageEntry())))
     // Broadcast
     val broadcast = Flipped(new DataBroadcastIO())
     // Execute queue interfaces
@@ -357,29 +346,70 @@ class IssueStage(executeQueueWidth: Int) extends Module {
     val recover = Input(Bool())
   })
 
-  private val inReg = RegInit(Vec(2, new IssueStageEntry()).zero)
+  private val inReg = RegInit(Vec2(new IssueStageEntry()).zero)
+
+  // Check queue grants
+  private val grants = VecInit2(VecInit.fill(executeQueueWidth)(false.B))
+  private val queueReady = VecInit2(true.B)
 
   // Broadcast logic
   for (
-    i <- 0 until 2;
-    j <- 0 until 2
+    in <- inReg;
+    broadcast <- io.broadcast.entries
   ) {
-    CoreUtils.matchBroadcast(inReg(i).rs1, inReg(i).rs1, io.broadcast.entries(j))
-    CoreUtils.matchBroadcast(inReg(i).rs2, inReg(i).rs2, io.broadcast.entries(j))
+    matchBroadcast(in.rs1, in.rs1, broadcast)
+    matchBroadcast(in.rs2, in.rs2, broadcast)
   }
 
-  // Check queue grants
-  private val grants = VecInit.fill(2)(VecInit.fill(executeQueueWidth)(false.B))
-  private val queueReady = VecInit.fill(2)(true.B)
+  // Pipeline logic
+  queueReady.zip(inReg).foreach { case (ready, in) =>
+    when(ready) { // Stall
+      in.valid := false.B
+    }
+  }
+
+  io.in.ready := queueReady(0) && queueReady(1)
+  when(io.in.fire) { // Sample
+    inReg := io.in.bits
+  }
+
+  // Connect entry to queue
+  private def connectQueue(entry: IssueStageEntry, queue: ExecuteQueueEnqueueIO) = {
+    queue.enq.bits.opcode := entry.opcode
+    queue.enq.bits.instructionType := entry.instructionType
+
+    // Broadcast bypass
+    // rs1
+    queue.enq.bits.rs1 := entry.rs1
+    io.broadcast.entries.foreach { broadcast =>
+      matchBroadcast(queue.enq.bits.rs1, entry.rs1, broadcast)
+    }
+    // rs2
+    queue.enq.bits.rs2 := entry.rs2
+    io.broadcast.entries.foreach { broadcast =>
+      matchBroadcast(queue.enq.bits.rs2, entry.rs2, broadcast)
+    }
+
+    queue.enq.bits.rd := entry.rd
+    queue.enq.bits.func3 := entry.func3
+    queue.enq.bits.func7 := entry.func7
+    queue.enq.bits.imm := entry.imm
+    queue.enq.bits.zimm := entry.zimm
+    queue.enq.bits.pc := entry.pc
+    queue.enq.bits.next := entry.next
+    queue.enq.bits.error := entry.error
+    queue.enq.bits.valid := entry.valid
+  }
 
   // Grant logic
-  io.enqs.foreach(_.enq.valid := false.B)
+  io.enqs <> Vec(executeQueueWidth, new ExecuteQueueEnqueueIO()).zero
 
   // Instruction 0 grant
   for (i <- 0 until executeQueueWidth) {
     grants(0)(i) := inReg(0).executeQueue === io.enqs(i).queueType && inReg(0).valid
     when(grants(0)(i)) {
       queueReady(0) := io.enqs(i).enq.ready
+      connectQueue(inReg(0), io.enqs(i))
       io.enqs(i).enq.valid := true.B
     }
   }
@@ -390,57 +420,11 @@ class IssueStage(executeQueueWidth: Int) extends Module {
 
     when(grants(1)(i)) {
       queueReady(1) := io.enqs(i).enq.ready
+      connectQueue(inReg(1), io.enqs(i))
       io.enqs(i).enq.valid := true.B
     }.elsewhen(inReg(1).executeQueue === io.enqs(i).queueType && inReg(1).valid && grants(0)(i)) { // Conflict
       queueReady(1) := false.B
     }
-  }
-
-  io.enqs.foreach(_.enq.bits := new ExecuteEntry().zero)
-
-  for (
-    i <- 0 until 2;
-    j <- 0 until executeQueueWidth
-  ) {
-    when(grants(i)(j)) {
-      io.enqs(j).enq.bits.opcode := inReg(i).opcode
-      io.enqs(j).enq.bits.instructionType := inReg(i).instructionType
-
-      // Broadcast bypass
-      // rs1
-      io.enqs(j).enq.bits.rs1 := inReg(i).rs1
-      for (k <- 0 until 2) {
-        CoreUtils.matchBroadcast(io.enqs(j).enq.bits.rs1, inReg(i).rs1, io.broadcast.entries(k))
-      }
-
-      // rs2
-      io.enqs(j).enq.bits.rs2 := inReg(i).rs2
-      for (k <- 0 until 2) {
-        CoreUtils.matchBroadcast(io.enqs(j).enq.bits.rs2, inReg(i).rs2, io.broadcast.entries(k))
-      }
-
-      io.enqs(j).enq.bits.rd := inReg(i).rd
-      io.enqs(j).enq.bits.func3 := inReg(i).func3
-      io.enqs(j).enq.bits.func7 := inReg(i).func7
-      io.enqs(j).enq.bits.imm := inReg(i).imm
-      io.enqs(j).enq.bits.zimm := inReg(i).zimm
-      io.enqs(j).enq.bits.pc := inReg(i).pc
-      io.enqs(j).enq.bits.next := inReg(i).next
-      io.enqs(j).enq.bits.error := inReg(i).error
-      io.enqs(j).enq.bits.valid := inReg(i).valid
-    }
-  }
-
-  for (i <- 0 until 2) { // Stall
-    when(queueReady(i)) {
-      inReg(i).valid := false.B
-    }
-  }
-
-  // Pipeline logic
-  io.in.ready := queueReady(0) && queueReady(1)
-  when(io.in.fire) { // Sample
-    inReg := io.in.bits
   }
 
   // Recovery logic

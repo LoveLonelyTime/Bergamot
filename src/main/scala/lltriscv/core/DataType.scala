@@ -26,6 +26,9 @@ object DataType {
   def strobe = UInt(4.W) // 4-bits for 32-bits(4-lanes) strobe
   def asid = UInt(9.W) // 9-bits address space ID
   def aByte = UInt(8.W) // A Byte
+  def vpn = UInt(20.W) // Virtual page number
+  def ppn20 = UInt(20.W) // 20-bits physical page number
+  def half = UInt(16.W) // half word
 }
 
 object CoreConstant {

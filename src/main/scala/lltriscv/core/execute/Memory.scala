@@ -421,7 +421,7 @@ class MemoryReadWriteStage extends Module {
   }
 
   // Result
-  io.out.bits.noResult()
+  io.out.bits := new ExecuteResultEntry().zero
 
   when(inReg.op === MemoryOperationType.lr) {
     io.out.bits.resultLR(inReg.vaddress)

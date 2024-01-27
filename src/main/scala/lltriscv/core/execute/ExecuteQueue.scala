@@ -2,13 +2,18 @@ package lltriscv.core.execute
 
 import chisel3._
 import chisel3.util._
+
 import lltriscv.core.broadcast.DataBroadcastIO
-import lltriscv.utils.CoreUtils
+
+import lltriscv.utils.CoreUtils._
 import lltriscv.utils.ChiselUtils._
-import dataclass.data
 
 /*
  * Execute queue (aka reservation station)
+ *
+ * Instructions are temporarily stored in the reservation station, waiting for wake-up(Data Capture).
+ * Instructions listening data broadcast in the reservation station.
+ * Afterwards, fire and execute instructions according to different wake-up algorithms.
  *
  * Copyright (C) 2024-2025 LoveLonelyTime
  */
@@ -29,10 +34,8 @@ abstract class ExecuteQueue(depth: Int, queueType: ExecuteQueueType.Type) extend
     // Enq and deq interface
     val enqAndType = Flipped(new ExecuteQueueEnqueueIO())
     val deq = DecoupledIO(new ExecuteEntry())
-
     // Broadcast interface
     val broadcast = Flipped(new DataBroadcastIO())
-
     // Recovery interface
     val recover = Input(Bool())
   })
@@ -43,7 +46,7 @@ abstract class ExecuteQueue(depth: Int, queueType: ExecuteQueueType.Type) extend
 
 /** The in ordered implementation of execute queue
   *
-  * This execute queue is in ordered, which is suitable for instruction sets that require in ordered within the queue
+  * This execute queue is in ordered, which is suitable for instruction sets that require in ordered within the queue.
   *
   * Implementation using read/write pointer queue
   *
@@ -59,8 +62,8 @@ class InOrderedExecuteQueue(depth: Int, queueType: ExecuteQueueType.Type) extend
 
   private val incrRead = WireInit(false.B)
   private val incrWrite = WireInit(false.B)
-  private val (readPtr, nextRead) = CoreUtils.pointer(depth, incrRead)
-  private val (writePtr, nextWrite) = CoreUtils.pointer(depth, incrWrite)
+  private val (readPtr, nextRead) = pointer(depth, incrRead)
+  private val (writePtr, nextWrite) = pointer(depth, incrWrite)
 
   private val emptyReg = RegInit(true.B)
   private val fullReg = RegInit(false.B)
@@ -104,12 +107,11 @@ class InOrderedExecuteQueue(depth: Int, queueType: ExecuteQueueType.Type) extend
 
   // Broadcast logic
   for (
-    i <- 0 until depth;
-    j <- 0 until 2
+    entry <- queue;
+    broadcast <- io.broadcast.entries
   ) {
-    // rs1 and rs2
-    CoreUtils.matchBroadcast(queue(i).rs1, queue(i).rs1, io.broadcast.entries(j))
-    CoreUtils.matchBroadcast(queue(i).rs2, queue(i).rs2, io.broadcast.entries(j))
+    matchBroadcast(entry.rs1, entry.rs1, broadcast)
+    matchBroadcast(entry.rs2, entry.rs2, broadcast)
   }
 
   // Write logic
@@ -123,7 +125,7 @@ class InOrderedExecuteQueue(depth: Int, queueType: ExecuteQueueType.Type) extend
   }
 }
 
-/** The in out of ordered implementation of execute queue
+/** The out of ordered implementation of execute queue
   *
   * Arbitration strategy is from old to new
   *
@@ -135,11 +137,14 @@ class InOrderedExecuteQueue(depth: Int, queueType: ExecuteQueueType.Type) extend
   *   Queue type
   */
 class OutOfOrderedExecuteQueue(depth: Int, queueType: ExecuteQueueType.Type) extends ExecuteQueue(depth, queueType) {
+
+  /** Double buffer cell
+    */
   private class DoubleBuffer extends Module {
     val io = IO(new Bundle {
       val enq = Flipped(DecoupledIO(new ExecuteEntry()))
       val deq = DecoupledIO(new ExecuteEntry())
-      val sideDeq = DecoupledIO(new ExecuteEntry())
+      val sideDeq = DecoupledIO(new ExecuteEntry()) // Firing path
       val broadcast = Flipped(new DataBroadcastIO())
       val recover = Input(Bool())
     })
@@ -151,6 +156,7 @@ class OutOfOrderedExecuteQueue(depth: Int, queueType: ExecuteQueueType.Type) ext
     private val stateReg = RegInit(State.empty)
     private val dataReg = Reg(new ExecuteEntry())
     private val shadowReg = Reg(new ExecuteEntry())
+
     private val deqFire = io.deq.fire || io.sideDeq.fire
 
     io.enq.ready := (stateReg === State.empty || stateReg === State.one)
@@ -165,16 +171,15 @@ class OutOfOrderedExecuteQueue(depth: Int, queueType: ExecuteQueueType.Type) ext
     io.sideDeq.bits := dataReg
 
     // Broadcast logic
-    for (i <- 0 until 2) { // Bypass
-      CoreUtils.matchBroadcast(io.deq.bits.rs1, dataReg.rs1, io.broadcast.entries(i))
-      CoreUtils.matchBroadcast(io.deq.bits.rs2, dataReg.rs2, io.broadcast.entries(i))
-    }
-    for (i <- 0 until 2) {
-      // rs1 and rs2
-      CoreUtils.matchBroadcast(dataReg.rs1, dataReg.rs1, io.broadcast.entries(i))
-      CoreUtils.matchBroadcast(dataReg.rs2, dataReg.rs2, io.broadcast.entries(i))
-      CoreUtils.matchBroadcast(shadowReg.rs1, shadowReg.rs1, io.broadcast.entries(i))
-      CoreUtils.matchBroadcast(shadowReg.rs2, shadowReg.rs2, io.broadcast.entries(i))
+    io.broadcast.entries.foreach { broadcast =>
+      // Bypass
+      matchBroadcast(io.deq.bits.rs1, dataReg.rs1, broadcast)
+      matchBroadcast(io.deq.bits.rs2, dataReg.rs2, broadcast)
+      // Listen
+      matchBroadcast(dataReg.rs1, dataReg.rs1, broadcast)
+      matchBroadcast(dataReg.rs2, dataReg.rs2, broadcast)
+      matchBroadcast(shadowReg.rs1, shadowReg.rs1, broadcast)
+      matchBroadcast(shadowReg.rs2, shadowReg.rs2, broadcast)
     }
 
     // Double buffer write logic
@@ -203,9 +208,9 @@ class OutOfOrderedExecuteQueue(depth: Int, queueType: ExecuteQueueType.Type) ext
       is(State.two) {
         when(deqFire) {
           dataReg := shadowReg
-          for (i <- 0 until 2) { // Bypass
-            CoreUtils.matchBroadcast(dataReg.rs1, shadowReg.rs1, io.broadcast.entries(i))
-            CoreUtils.matchBroadcast(dataReg.rs2, shadowReg.rs2, io.broadcast.entries(i))
+          io.broadcast.entries.foreach { broadcast => // Bypass
+            matchBroadcast(dataReg.rs1, shadowReg.rs1, broadcast)
+            matchBroadcast(dataReg.rs2, shadowReg.rs2, broadcast)
           }
           stateReg := State.one
         }
@@ -220,16 +225,16 @@ class OutOfOrderedExecuteQueue(depth: Int, queueType: ExecuteQueueType.Type) ext
   }
 
   private val buffers = Array.fill(depth)(Module(new DoubleBuffer()))
-
-  for (i <- 0 until depth) {
-    buffers(i).io.broadcast := io.broadcast
-    buffers(i).io.recover := io.recover
+  buffers.foreach { cell =>
+    cell.io.broadcast := io.broadcast
+    cell.io.recover := io.recover
   }
 
-  for (i <- 0 until (depth - 1)) {
-    buffers(i + 1).io.enq <> buffers(i).io.deq
-  }
+  // Buffer chain
   io.enqAndType.enq <> buffers(0).io.enq
+  for (i <- 0 until (depth - 1)) {
+    buffers(i).io.deq <> buffers(i + 1).io.enq
+  }
   buffers(depth - 1).io.deq.ready := false.B // Block tail
 
   // Arbitration, from tail to head (old to new)

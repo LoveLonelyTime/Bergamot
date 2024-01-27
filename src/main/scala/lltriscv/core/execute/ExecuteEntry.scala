@@ -2,8 +2,8 @@ package lltriscv.core.execute
 
 import chisel3._
 import chisel3.util._
+
 import lltriscv.core._
-import lltriscv.core.decode._
 import lltriscv.core.broadcast.DataBroadcastSlotEntry
 import lltriscv.core.decode.InstructionType
 
@@ -12,26 +12,6 @@ import lltriscv.core.decode.InstructionType
  *
  * Copyright (C) 2024-2025 LoveLonelyTime
  */
-
-/** Execute entry
-  *
-  * The entry of reservation station, representing an executable instruction
-  */
-class ExecuteEntry extends Bundle {
-  val opcode = DataType.opcode // opcode
-  val instructionType = InstructionType() // Instruction Type
-  val rs1 = new DataBroadcastSlotEntry() // rs1
-  val rs2 = new DataBroadcastSlotEntry() // rs2
-  val rd = DataType.receipt // rd
-  val func3 = DataType.func3 // func3
-  val func7 = DataType.func7 // func7
-  val imm = DataType.immediate // Immediate
-  val zimm = DataType.zimmediate // CSR zimm
-  val pc = DataType.address // Corresponding PC
-  val next = DataType.address // Next PC
-  val error = MemoryErrorCode() // Error
-  val valid = Bool() // Validity
-}
 
 /** Instruction exception code
   *
@@ -54,6 +34,45 @@ object ExceptionCode {
   val loadPageFault = 13.U
   // 14 Reserved
   val storeAMOPageFault = 15.U
+}
+
+/** Execute queue type
+  */
+object ExecuteQueueType extends ChiselEnum {
+  /*
+   * none: Discarded instructions
+   * memory: Memory access instructions
+   * alu: ALU instructions
+   * branch: Branch instructions
+   */
+  val none, memory, alu, branch = Value
+}
+
+/** Execute queue enqueue interface
+  */
+class ExecuteQueueEnqueueIO extends Bundle {
+  val enq = DecoupledIO(new ExecuteEntry()) // Data interface
+  val queueType = Input(ExecuteQueueType()) // Tell the issue stage the queue type, hardwired
+}
+
+/** Execute entry
+  *
+  * The entry of reservation station, representing an executable instruction
+  */
+class ExecuteEntry extends Bundle {
+  val opcode = DataType.opcode // opcode
+  val instructionType = InstructionType() // Instruction Type
+  val rs1 = new DataBroadcastSlotEntry() // rs1
+  val rs2 = new DataBroadcastSlotEntry() // rs2
+  val rd = DataType.receipt // rd
+  val func3 = DataType.func3 // func3
+  val func7 = DataType.func7 // func7
+  val imm = DataType.immediate // Immediate
+  val zimm = DataType.zimmediate // CSR zimm
+  val pc = DataType.address // Corresponding PC
+  val next = DataType.address // Next PC
+  val error = MemoryErrorCode() // Error
+  val valid = Bool() // Validity
 }
 
 /** Execute result entry
@@ -100,20 +119,9 @@ class ExecuteResultEntry extends Bundle {
   val valid = Bool() // Validity
 
   // Helper functions
-  def noException() = {
-    exception := false.B
-    exceptionCode := 0.U
-  }
-
   def triggerException(code: UInt) = {
     exception := true.B
     exceptionCode := code
-  }
-
-  def noCSR() = {
-    writeCSR := false.B
-    csrAddress := 0.U
-    csrData := 0.U
   }
 
   def resultCSR(addr: UInt, wdata: UInt) = {
@@ -127,60 +135,8 @@ class ExecuteResultEntry extends Bundle {
     lrAddress := addr
   }
 
-  def noMemory() = {
-    write := false.B
-    writeID := 0.U
-  }
-
   def resultMemory(id: UInt) = {
     write := true.B
     writeID := id
   }
-
-  def noFlush() = {
-    flushDCache := false.B
-    flushICache := false.B
-    flushTLB := false.B
-  }
-
-  def noLRSC() = {
-    lr := false.B
-    sc := false.B
-    lrAddress := 0.U
-  }
-
-  def noResult() = {
-    result := 0.U
-    noException()
-    noCSR()
-    noMemory()
-    noFlush()
-    noLRSC()
-    xret := false.B
-    rd := 0.U
-    pc := 0.U
-    next := 0.U
-    real := 0.U
-    branch := false.B
-    valid := false.B
-  }
-}
-
-/** Execute queue enqueue interface
-  */
-class ExecuteQueueEnqueueIO extends Bundle {
-  val enq = DecoupledIO(new ExecuteEntry()) // Data interface
-  val queueType = Input(ExecuteQueueType()) // Tell the issue stage the queue type, hardwired
-}
-
-/** Execute queue type
-  */
-object ExecuteQueueType extends ChiselEnum {
-  /*
-   * none: Discarded instructions
-   * memory: Memory access instructions
-   * alu: ALU instructions
-   * branch: Branch instructions
-   */
-  val none, memory, alu, branch = Value
 }

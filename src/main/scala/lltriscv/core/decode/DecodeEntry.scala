@@ -5,7 +5,8 @@ import chisel3.util._
 
 import lltriscv.core._
 import lltriscv.core.broadcast.DataBroadcastSlotEntry
-import lltriscv.core.execute._
+import lltriscv.core.execute.MemoryErrorCode
+import lltriscv.core.execute.ExecuteQueueType
 
 /*
  * Decode entry
@@ -14,6 +15,8 @@ import lltriscv.core.execute._
  */
 
 /** RISC-V instruction types
+  *
+  * Although RISC-V has 6 types of instructions, each type has various variants
   */
 object InstructionType extends ChiselEnum {
   /*
@@ -71,8 +74,8 @@ class IssueStageEntry extends Bundle {
   val opcode = DataType.opcode // opcode
   val instructionType = InstructionType() // Instruction Type
   val executeQueue = ExecuteQueueType() // Execute queue
-  val rs1 = new DataBroadcastSlotEntry() // rs1
-  val rs2 = new DataBroadcastSlotEntry() // rs2
+  val rs1 = new DataBroadcastSlotEntry() // Broadcast rs1
+  val rs2 = new DataBroadcastSlotEntry() // Broadcast rs2
   val rd = DataType.receipt // rd
   val func3 = DataType.func3 // func3
   val func7 = DataType.func7 // func7

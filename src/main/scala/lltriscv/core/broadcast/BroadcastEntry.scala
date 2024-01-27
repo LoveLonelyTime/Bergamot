@@ -5,6 +5,9 @@ import chisel3.util._
 
 import lltriscv.core._
 
+import lltriscv.utils.CoreUtils._
+import lltriscv.utils.ChiselUtils._
+
 /*
  * Broadcast entry
  *
@@ -27,28 +30,28 @@ class DataBroadcastSlotEntry extends Bundle {
   * A data broadcasts
   */
 class DataBroadcastEntry extends Bundle {
-  val valid = Bool()
   // Broadcast receipt
   val receipt = DataType.receipt
   // Data
   val data = DataType.operation
+  val valid = Bool()
 
-  // Helper functions
+  /** Cast a broadcast
+    *
+    * @param receipt
+    *   Data receipt
+    * @param data
+    *   Data
+    */
   def castBroadcast(receipt: UInt, data: UInt) = {
     valid := true.B
     this.receipt := receipt
     this.data := data
-  }
-
-  def noBroadcast() = {
-    valid := false.B
-    this.receipt := 0.U
-    this.data := 0.U
   }
 }
 
 /** Data broadcast interface
   */
 class DataBroadcastIO extends Bundle {
-  val entries = Output(Vec(2, new DataBroadcastEntry()))
+  val entries = Output(Vec2(new DataBroadcastEntry()))
 }

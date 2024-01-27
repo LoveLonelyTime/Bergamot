@@ -44,18 +44,21 @@ object ALUOperationType extends ChiselEnum {
    *
    * Privilege switch operations:
    * - env: Trigger environment call trap (exception)
-   * - xret: Environment call return
+   * - ebreak: Environment breakpoint (exception)
+   * - mret: M-Level Environment call return
+   * - sret: M-Level Environment call return
    *
    * Fence operations:
    * - fence: Memory fence
    * - fencei: Instruction memory fence
+   * - sfenceVMA: Update TLB
    *
    * Multiplication and division operations:
    * - mul, mulh, mulhsu, mulhu: Multiplication
    * - div, divu: Division
    * - rem, remu: Modulus
    */
-  val none, undefined, add, sub, and, or, xor, sll, srl, sra, slt, sltu, csrrw, csrrs, csrrc, env, xret, fence, fencei, mul, mulh, mulhsu, mulhu, div, divu, rem, remu = Value
+  val none, undefined, add, sub, and, or, xor, sll, srl, sra, slt, sltu, csrrw, csrrs, csrrc, env, ebreak, mret, sret, fence, fencei, sfenceVMA, mul, mulh, mulhsu, mulhu, div, divu, rem, remu = Value
 }
 
 /** ALU execute stage entry

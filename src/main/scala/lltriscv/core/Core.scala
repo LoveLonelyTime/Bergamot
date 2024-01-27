@@ -197,7 +197,7 @@ class CoreFrontend(config: CoreConfig) extends Module {
   // Decode
   decode.io.mapping <> registerMappingTable.io.mapping
   decode.io.broadcast <> io.broadcast
-  decode.io.tableWrite <> io.tableWrite
+  decode.io.robTableWrite <> io.tableWrite
   decode.io.recover := io.recover
   decode.io.enqs <> io.enqs
 
@@ -370,7 +370,7 @@ class CoreBackend(config: CoreConfig) extends Module {
   // Broadcaster
   broadcaster.io.queues <> io.deqs
   broadcaster.io.broadcast <> io.broadcast
-  broadcaster.io.tableCommit <> rob.io.tableCommit
+  broadcaster.io.robTableCommit <> rob.io.tableCommit
 
   // InstructionRetire
   instructionRetire.io.retired <> rob.io.retired

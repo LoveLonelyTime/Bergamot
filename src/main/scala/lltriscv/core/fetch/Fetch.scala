@@ -90,6 +90,7 @@ class Fetch(cacheLineDepth: Int, queueDepth: Int, predictorDepth: Int, pcInit: I
 class InstructionFetcher(cacheLineDepth: Int) extends Module {
   require(cacheLineDepth % 2 == 0, "Instruction Cache line depth must be a multiple of 2")
   require(cacheLineDepth >= 4, "Instruction Cache line depth must be greater than or equal 4")
+  require(cacheLineDepth <= 2048, "Instruction Cache line depth is too big")
 
   val io = IO(new Bundle {
     val out = Output(Vec2(new RawInstructionEntry()))
@@ -104,7 +105,7 @@ class InstructionFetcher(cacheLineDepth: Int) extends Module {
 
   // Buffers
   private val itlbWorkReg = RegInit(Vec2(new ITLBWorkEntry()).zero)
-  private val cacheLineWorkReg = RegInit(Vec2(new ICacheLineWorkEntry()).zero)
+  private val cacheLineWorkReg = RegInit(Vec2(new ICacheLineWorkEntry(cacheLineDepth)).zero)
 
   /* The struction of cache address:
      CacheLineAddress |       CacheLineOffset     | byte offset
@@ -272,7 +273,7 @@ class InstructionFetcher(cacheLineDepth: Int) extends Module {
     .foreach { case ((matched, oppositeMatched), (item, opposite)) =>
       when(matched) { // Cache line exists
         // Collect the location of two instructions
-        val cachelines = Wire(Vec2(new ICacheLineWorkEntry()))
+        val cachelines = Wire(Vec2(new ICacheLineWorkEntry(cacheLineDepth)))
         val pcValues = Wire(Vec2(DataType.address))
         val offsetValues = pcValues.map(getCacheLineOffset(_))
         val compress = cachelines.zip(offsetValues).map { case (cacheLine, offset) =>

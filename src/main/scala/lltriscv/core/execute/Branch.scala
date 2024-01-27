@@ -4,13 +4,15 @@ import chisel3._
 import chisel3.util._
 
 import lltriscv.core._
-import lltriscv.core.record._
-import lltriscv.utils.CoreUtils
 import lltriscv.core.decode.InstructionType
+
 import lltriscv.utils.ChiselUtils._
+import lltriscv.utils.CoreUtils._
 
 /*
  * Branch processing unit, which is suitable for branch operations
+ *
+ * Separate processing of branch to accelerate the core speed of branch instructions.
  *
  * List of supported instructions:
  * - I: jal, jalr, beq, bne, blt, bge, bltu, bgeu
@@ -18,7 +20,7 @@ import lltriscv.utils.ChiselUtils._
  * Copyright (C) 2024-2025 LoveLonelyTime
  */
 
-/** Branch
+/** Branch components
   *
   * BranchDecodeStage -> BranchExecuteStage
   */
@@ -37,7 +39,6 @@ class Branch extends Module {
   branchDecodeStage.io.out <> branchExecuteStage.io.in
   branchExecuteStage.io.out <> io.out
 
-  // Recovery logic
   branchDecodeStage.io.recover := io.recover
   branchExecuteStage.io.recover := io.recover
 }
@@ -98,11 +99,11 @@ class BranchDecodeStage extends Module {
 
   // add2
   when(inReg.instructionType === InstructionType.J) { // jal
-    io.out.bits.add2 := CoreUtils.signExtended(inReg.imm, 20)
+    io.out.bits.add2 := signExtended(inReg.imm, 20)
   }.elsewhen(inReg.instructionType === InstructionType.I) { // jalr
-    io.out.bits.add2 := CoreUtils.signExtended(inReg.imm, 11)
+    io.out.bits.add2 := signExtended(inReg.imm, 11)
   }.otherwise { // branch
-    io.out.bits.add2 := CoreUtils.signExtended(inReg.imm, 12)
+    io.out.bits.add2 := signExtended(inReg.imm, 12)
   }
 
   io.out.bits.rd := inReg.rd
@@ -151,7 +152,7 @@ class BranchExecuteStage extends Module {
   private val ne = WireInit(!eq)
   private val ltu = WireInit(!eq && !gtu)
   private val gt = WireInit(false.B)
-  private val sign = inReg.op1(31) ## inReg.op2(31)
+  private val sign = inReg.op1(CoreConstant.XLEN - 1) ## inReg.op2(CoreConstant.XLEN - 1)
   switch(sign) {
     is("b00".U) { gt := gtu }
     is("b01".U) { gt := true.B }
@@ -162,41 +163,29 @@ class BranchExecuteStage extends Module {
 
   private val addPC = WireInit(inReg.add1 + inReg.add2)
 
-  // Real PC
-  io.out.bits.noResult()
+  io.out.bits := new ExecuteResultEntry().zero
 
-  io.out.bits.real := inReg.next
-  switch(inReg.op) {
-    is(BranchOperationType.eq) {
-      io.out.bits.real := Mux(eq, addPC, inReg.next)
-    }
-    is(BranchOperationType.ne) {
-      io.out.bits.real := Mux(ne, addPC, inReg.next)
-    }
-    is(BranchOperationType.ge) {
-      io.out.bits.real := Mux(gt || eq, addPC, inReg.next)
-    }
-    is(BranchOperationType.lt) {
-      io.out.bits.real := Mux(lt, addPC, inReg.next)
-    }
-    is(BranchOperationType.geu) {
-      io.out.bits.real := Mux(gtu || eq, addPC, inReg.next)
-    }
-    is(BranchOperationType.ltu) {
-      io.out.bits.real := Mux(ltu, addPC, inReg.next)
-    }
-    is(BranchOperationType.jal) {
-      io.out.bits.real := addPC(31, 1) ## 0.U // Reset LSB
-    }
-    is(BranchOperationType.undefined) {
-      io.out.bits.triggerException(ExceptionCode.illegalInstruction)
-    }
+  // Real PC
+  io.out.bits.real := MuxLookup(inReg.op, inReg.next)(
+    Seq(
+      BranchOperationType.eq -> Mux(eq, addPC, inReg.next),
+      BranchOperationType.ne -> Mux(ne, addPC, inReg.next),
+      BranchOperationType.ge -> Mux(gt || eq, addPC, inReg.next),
+      BranchOperationType.lt -> Mux(lt, addPC, inReg.next),
+      BranchOperationType.geu -> Mux(gtu || eq, addPC, inReg.next),
+      BranchOperationType.ltu -> Mux(ltu, addPC, inReg.next),
+      BranchOperationType.jal -> addPC(CoreConstant.XLEN - 1, 1) ## 0.U // Reset LSB
+    )
+  )
+
+  // Exception handler
+  when(inReg.op === BranchOperationType.undefined) {
+    io.out.bits.triggerException(ExceptionCode.illegalInstruction)
   }
 
   io.out.bits.result := inReg.next // Save next PC
+  io.out.bits.branch := true.B // This is a branch
 
-  // This is a branch
-  io.out.bits.branch := true.B
   io.out.bits.rd := inReg.rd
   io.out.bits.pc := inReg.pc
   io.out.bits.next := inReg.next

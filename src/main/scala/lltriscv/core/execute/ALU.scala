@@ -4,26 +4,28 @@ import chisel3._
 import chisel3.util._
 
 import lltriscv.core._
-import lltriscv.core.record._
-import lltriscv.utils.CoreUtils
-import lltriscv.utils.ChiselUtils._
 import lltriscv.core.decode.InstructionType
+import lltriscv.core.record.CSRsReadIO
+import lltriscv.core.record.PrivilegeType
+
+import lltriscv.utils.CoreUtils._
+import lltriscv.utils.ChiselUtils._
 
 /*
  * ALU (Arithmetic and Logic Unit), which is suitable for integer operations
  *
  * List of supported instructions:
- * - I: lui, auipc, add, sub, sll, slt, sltu, xor, srl, sra, or, and, addi, slti, sltiu, xori, ori, andi, slli, srli, srai, ecall, ebreak, fence
+ * - I: lui, auipc, add, sub, sll, slt, sltu, xor, srl, sra, or, and, addi, slti, sltiu, xori, ori, andi, slli, srli, srai, ecall, ebreak, fence, wfi
  * - M: mul, mulh, mulhsu, mulhu, div, divu, rem, remu
  * - Zicsr: csrrw, csrrs, csrrc, csrrwi, csrrsi, csrrci
  * - M-Level: mret
- * - S-Level: sret
+ * - S-Level: sret, sfence.vma
  * - Zifencei: fence.i
  *
  * Copyright (C) 2024-2025 LoveLonelyTime
  */
 
-/** ALU
+/** ALU components
   *
   * Execute basic ALU instructions
   *
@@ -89,94 +91,52 @@ class ALUDecodeStage extends Module {
   io.in.ready := io.out.ready
 
   // Decode logic
+  io.out.bits := new ALUExecuteStageEntry().zero
+  io.csr <> new CSRsReadIO().zero
   // op
-  io.out.bits.op := ALUOperationType.undefined
-
   switch(inReg.opcode(6, 2)) {
-    is("b00100".U) { // Basic type I Instructions
-      switch(inReg.func3) {
-        is("b000".U) {
-          io.out.bits.op := ALUOperationType.add
-        }
-        is("b100".U) {
-          io.out.bits.op := ALUOperationType.xor
-        }
-        is("b110".U) {
-          io.out.bits.op := ALUOperationType.or
-        }
-        is("b111".U) {
-          io.out.bits.op := ALUOperationType.and
-        }
-        is("b001".U) {
-          io.out.bits.op := ALUOperationType.sll
-        }
-        is("b010".U) {
-          io.out.bits.op := ALUOperationType.slt
-        }
-        is("b011".U) {
-          io.out.bits.op := ALUOperationType.sltu
-        }
-        is("b101".U) { // slri / srai
-          io.out.bits.op := Mux(inReg.func7(5), ALUOperationType.sra, ALUOperationType.srl)
-        }
-      }
+    is("b00100".U) { // ALU type I instructions
+      io.out.bits.op := MuxLookup(inReg.func3, ALUOperationType.undefined)(
+        Seq(
+          "b000".U -> ALUOperationType.add,
+          "b100".U -> ALUOperationType.xor,
+          "b110".U -> ALUOperationType.or,
+          "b111".U -> ALUOperationType.and,
+          "b001".U -> ALUOperationType.sll,
+          "b010".U -> ALUOperationType.slt,
+          "b011".U -> ALUOperationType.sltu,
+          "b101".U -> Mux(inReg.func7(5), ALUOperationType.sra, ALUOperationType.srl)
+        )
+      )
     }
 
-    is("b01100".U) { // Basic type R Instructions
+    is("b01100".U) { // Basic type R instructions
       when(inReg.func7(0)) { // M Extensions
-        switch(inReg.func3) {
-          is("b000".U) {
-            io.out.bits.op := ALUOperationType.mul
-          }
-          is("b001".U) {
-            io.out.bits.op := ALUOperationType.mulh
-          }
-          is("b010".U) {
-            io.out.bits.op := ALUOperationType.mulhsu
-          }
-          is("b011".U) {
-            io.out.bits.op := ALUOperationType.mulhu
-          }
-          is("b100".U) {
-            io.out.bits.op := ALUOperationType.div
-          }
-          is("b101".U) {
-            io.out.bits.op := ALUOperationType.divu
-          }
-          is("b110".U) {
-            io.out.bits.op := ALUOperationType.rem
-          }
-          is("b111".U) {
-            io.out.bits.op := ALUOperationType.remu
-          }
-        }
-      }.otherwise {
-        switch(inReg.func3) {
-          is("b000".U) { // add / sub
-            io.out.bits.op := Mux(inReg.func7(5), ALUOperationType.sub, ALUOperationType.add)
-          }
-          is("b100".U) {
-            io.out.bits.op := ALUOperationType.xor
-          }
-          is("b110".U) {
-            io.out.bits.op := ALUOperationType.or
-          }
-          is("b111".U) {
-            io.out.bits.op := ALUOperationType.and
-          }
-          is("b001".U) {
-            io.out.bits.op := ALUOperationType.sll
-          }
-          is("b010".U) {
-            io.out.bits.op := ALUOperationType.slt
-          }
-          is("b011".U) {
-            io.out.bits.op := ALUOperationType.sltu
-          }
-          is("b101".U) { // slr / sra
-            io.out.bits.op := Mux(inReg.func7(5), ALUOperationType.sra, ALUOperationType.srl)
-          }
-        }
+        io.out.bits.op := MuxLookup(inReg.func3, ALUOperationType.undefined)(
+          Seq(
+            "b000".U -> ALUOperationType.mul,
+            "b001".U -> ALUOperationType.mulh,
+            "b010".U -> ALUOperationType.mulhsu,
+            "b011".U -> ALUOperationType.mulhu,
+            "b100".U -> ALUOperationType.div,
+            "b101".U -> ALUOperationType.divu,
+            "b110".U -> ALUOperationType.rem,
+            "b111".U -> ALUOperationType.remu
+          )
+        )
+      }.otherwise { // ALU type R instructions
+        io.out.bits.op := MuxLookup(inReg.func3, ALUOperationType.undefined)(
+          Seq(
+            "b000".U -> Mux(inReg.func7(5), ALUOperationType.sub, ALUOperationType.add),
+            "b100".U -> ALUOperationType.xor,
+            "b110".U -> ALUOperationType.or,
+            "b111".U -> ALUOperationType.and,
+            "b001".U -> ALUOperationType.sll,
+            "b010".U -> ALUOperationType.slt,
+            "b011".U -> ALUOperationType.sltu,
+            "b101".U -> Mux(inReg.func7(5), ALUOperationType.sra, ALUOperationType.srl)
+          )
+        )
       }
     }
 
@@ -187,30 +147,28 @@ class ALUDecodeStage extends Module {
       io.out.bits.op := ALUOperationType.add
     }
 
-    is("b11100".U) { // csr, ecall, ebreak, xret
-      switch(inReg.func3) {
-        is("b000".U) { // xret, env, ebreak
-          io.out.bits.op := Mux(inReg.imm(1), ALUOperationType.xret, ALUOperationType.env)
-        }
-        is("b001".U) {
-          io.out.bits.op := ALUOperationType.csrrw
-        }
-        is("b010".U) {
-          io.out.bits.op := ALUOperationType.csrrs
-        }
-        is("b011".U) {
-          io.out.bits.op := ALUOperationType.csrrc
-        }
-        is("b101".U) {
-          io.out.bits.op := ALUOperationType.csrrw
-        }
-        is("b110".U) {
-          io.out.bits.op := ALUOperationType.csrrs
-        }
-        is("b111".U) {
-          io.out.bits.op := ALUOperationType.csrrc
-        }
-      }
+    is("b11100".U) { // csr, xret, env, ebreak, wfi, sfence.vma
+      io.out.bits.op := MuxLookup(inReg.func3, ALUOperationType.undefined)(
+        Seq(
+          "b000".U -> MuxCase( // xret, env, ebreak, wfi, sfence.vma
+            ALUOperationType.undefined,
+            Seq(
+              (inReg.imm === "b000000000000".U) -> ALUOperationType.env,
+              (inReg.imm === "b000000000001".U) -> ALUOperationType.ebreak,
+              (inReg.imm === "b000100000010".U) -> ALUOperationType.sret,
+              (inReg.imm === "b001100000010".U) -> ALUOperationType.mret,
+              (inReg.imm === "b000100000101".U) -> ALUOperationType.none, // wfi -> nop
+              (inReg.imm(11, 5) === "b0001001".U) -> ALUOperationType.sfenceVMA
+            )
+          ),
+          "b001".U -> ALUOperationType.csrrw,
+          "b010".U -> ALUOperationType.csrrs,
+          "b011".U -> ALUOperationType.csrrc,
+          "b101".U -> ALUOperationType.csrrw,
+          "b110".U -> ALUOperationType.csrrs,
+          "b111".U -> ALUOperationType.csrrc
+        )
+      )
     }
 
     is("b00011".U) { // fence, fence.i
@@ -219,12 +177,6 @@ class ALUDecodeStage extends Module {
   }
 
   // op1 & op2 & csr
-  io.out.bits.op1 := 0.U
-  io.out.bits.op2 := 0.U
-  io.out.bits.csrAddress := 0.U
-  io.out.bits.csrError := false.B
-  io.csr.address := 0.U
-
   switch(inReg.instructionType) {
     is(InstructionType.R) { // R
       io.out.bits.op1 := inReg.rs1.receipt
@@ -246,7 +198,7 @@ class ALUDecodeStage extends Module {
             (io.privilege === PrivilegeType.S && inReg.imm(9, 8) === "b11".U) || (io.privilege === PrivilegeType.U && inReg.imm(9, 8) =/= "b00".U) // Unauthorized access
       }.otherwise { // General I
         io.out.bits.op1 := inReg.rs1.receipt
-        io.out.bits.op2 := CoreUtils.signExtended(inReg.imm, 11) // Extend imm
+        io.out.bits.op2 := signExtended(inReg.imm, 11) // Extend imm
       }
     }
 
@@ -299,7 +251,7 @@ class ALUExecuteStage extends Module {
   }
 
   // Execute logic
-  io.out.bits.noResult()
+  io.out.bits := new ExecuteResultEntry().zero
   switch(inReg.op) {
     is(ALUOperationType.add) {
       io.out.bits.result := inReg.op1 + inReg.op2
@@ -372,30 +324,30 @@ class ALUExecuteStage extends Module {
         io.out.bits.resultCSR(inReg.csrAddress, inReg.op1 & ~inReg.op2)
       }
     }
+    is(ALUOperationType.ebreak) {
+      io.out.bits.triggerException(ExceptionCode.breakpoint)
+    }
     is(ALUOperationType.env) {
-      when(inReg.op2(0)) { // ebreak
-        io.out.bits.triggerException(ExceptionCode.breakpoint)
-      }.otherwise { // ecall
-        switch(io.privilege) {
-          is(PrivilegeType.M) { io.out.bits.triggerException(ExceptionCode.environmentCallFromMMode) }
-          is(PrivilegeType.S) { io.out.bits.triggerException(ExceptionCode.environmentCallFromSMode) }
-          is(PrivilegeType.U) { io.out.bits.triggerException(ExceptionCode.environmentCallFromUMode) }
-        }
+      switch(io.privilege) {
+        is(PrivilegeType.M) { io.out.bits.triggerException(ExceptionCode.environmentCallFromMMode) }
+        is(PrivilegeType.S) { io.out.bits.triggerException(ExceptionCode.environmentCallFromSMode) }
+        is(PrivilegeType.U) { io.out.bits.triggerException(ExceptionCode.environmentCallFromUMode) }
       }
     }
-    is(ALUOperationType.xret) {
-      when(inReg.op2(9)) { // mret
-        when(io.privilege === PrivilegeType.M) { // OK
-          io.out.bits.xret := true.B
-        }.otherwise { // Unauthorized access
-          io.out.bits.triggerException(ExceptionCode.illegalInstruction)
-        }
-      }.otherwise { // sret
-        when(io.privilege === PrivilegeType.S) { // OK
-          io.out.bits.xret := true.B
-        }.otherwise { // Unauthorized access
-          io.out.bits.triggerException(ExceptionCode.illegalInstruction)
-        }
+
+    is(ALUOperationType.sret) {
+      when(io.privilege === PrivilegeType.S) { // OK
+        io.out.bits.xret := true.B
+      }.otherwise { // Unauthorized access
+        io.out.bits.triggerException(ExceptionCode.illegalInstruction)
+      }
+    }
+
+    is(ALUOperationType.mret) {
+      when(io.privilege === PrivilegeType.M) { // OK
+        io.out.bits.xret := true.B
+      }.otherwise { // Unauthorized access
+        io.out.bits.triggerException(ExceptionCode.illegalInstruction)
       }
     }
 
@@ -410,9 +362,18 @@ class ALUExecuteStage extends Module {
       io.out.bits.flushICache := true.B
     }
 
+    is(ALUOperationType.sfenceVMA) {
+      // TODO
+    }
+
     is(ALUOperationType.undefined) {
       io.out.bits.triggerException(ExceptionCode.illegalInstruction)
     }
+  }
+
+  // CSR Error
+  when(inReg.csrError) {
+    io.out.bits.triggerException(ExceptionCode.illegalInstruction)
   }
 
   // Instruction cache line error
@@ -422,12 +383,6 @@ class ALUExecuteStage extends Module {
     io.out.bits.triggerException(ExceptionCode.instructionPageFault)
   }
 
-  // CSR Error
-  when(inReg.csrError) {
-    io.out.bits.triggerException(ExceptionCode.illegalInstruction)
-  }
-
-  // rd & pc & valid
   io.out.bits.rd := inReg.rd
   io.out.bits.pc := inReg.pc
   io.out.bits.next := inReg.next

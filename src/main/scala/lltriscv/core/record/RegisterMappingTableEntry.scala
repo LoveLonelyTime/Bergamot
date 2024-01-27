@@ -6,6 +6,9 @@ import chisel3.util._
 import lltriscv.core._
 import lltriscv.core.broadcast.DataBroadcastSlotEntry
 
+import lltriscv.utils.CoreUtils._
+import lltriscv.utils.ChiselUtils._
+
 /*
  * Register mapping table entry
  *
@@ -17,11 +20,11 @@ import lltriscv.core.broadcast.DataBroadcastSlotEntry
 class RegisterMappingIO extends Bundle {
   // Request Registers
   val regGroup = Output(
-    Vec(
-      2,
+    Vec2(
       new Bundle {
         val rs1 = DataType.register
         val rs2 = DataType.register
+        val rs3 = DataType.register
         val rd = DataType.register
       }
     )
@@ -29,11 +32,11 @@ class RegisterMappingIO extends Bundle {
 
   // Response registers
   val mappingGroup = Input(
-    Vec(
-      2,
+    Vec2(
       new Bundle {
         val rs1 = new DataBroadcastSlotEntry()
         val rs2 = new DataBroadcastSlotEntry()
+        val rs3 = new DataBroadcastSlotEntry()
         val rd = DataType.receipt
       }
     )
@@ -62,8 +65,7 @@ class RegisterMappingTableEntry extends Bundle {
   */
 class RegisterUpdateIO extends Bundle {
   val entries = Output(
-    Vec(
-      2,
+    Vec2(
       new Bundle {
         val rd = DataType.register
         val result = DataType.operation

@@ -4,9 +4,11 @@ import chisel3._
 import chisel3.util._
 
 import lltriscv.core._
-import lltriscv.core.execute._
-import lltriscv.core.record._
-import lltriscv.utils.CoreUtils
+import lltriscv.core.record.ROBTableCommitIO
+import lltriscv.core.execute.ExecuteResultEntry
+
+import lltriscv.utils.CoreUtils._
+import lltriscv.utils.ChiselUtils._
 
 /*
  * Broadcaster
@@ -32,7 +34,7 @@ abstract class Broadcaster(executeQueueWidth: Int) extends Module {
     // Broadcast interface
     val broadcast = new DataBroadcastIO()
     // ROB table commit interface
-    val tableCommit = new ROBTableCommitIO()
+    val robTableCommit = new ROBTableCommitIO()
   })
 }
 
@@ -45,7 +47,7 @@ abstract class Broadcaster(executeQueueWidth: Int) extends Module {
   */
 class RoundRobinBroadcaster(executeQueueWidth: Int) extends Broadcaster(executeQueueWidth) {
   // Single cycle auto increasing loop pointer
-  private val (pointer, nextVal) = CoreUtils.pointer(executeQueueWidth, true.B)
+  private val (focusPointer, nextFocusPointer) = pointer(executeQueueWidth, true.B)
 
   /** Commit queue to entry
     *
@@ -53,12 +55,11 @@ class RoundRobinBroadcaster(executeQueueWidth: Int) extends Broadcaster(executeQ
     *   Pointer of queue
     * @param entryPtr
     *   Pointer of entry
-    * @return
     */
   def commit(queuePtr: UInt, entryPtr: Int) = {
     when(io.queues(queuePtr).valid) {
       io.queues(queuePtr).ready := true.B
-      io.tableCommit.entries(entryPtr) <> io.queues(queuePtr).bits
+      io.robTableCommit.entries(entryPtr) <> io.queues(queuePtr).bits
       when(io.queues(queuePtr).bits.valid) {
         io.broadcast.entries(entryPtr).castBroadcast(io.queues(queuePtr).bits.rd, io.queues(queuePtr).bits.result)
       }
@@ -67,9 +68,9 @@ class RoundRobinBroadcaster(executeQueueWidth: Int) extends Broadcaster(executeQ
 
   // Commit logic
   io.queues.foreach(_.ready := false.B)
-  io.broadcast.entries.foreach(_.noBroadcast())
-  io.tableCommit.entries.foreach(_.noResult())
+  io.broadcast <> new DataBroadcastIO().zero
+  io.robTableCommit <> new ROBTableCommitIO().zero
 
-  commit(pointer, 0)
-  commit(nextVal, 1)
+  commit(focusPointer, 0)
+  commit(nextFocusPointer, 1)
 }

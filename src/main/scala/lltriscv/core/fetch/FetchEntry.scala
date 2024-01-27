@@ -2,37 +2,57 @@ package lltriscv.core.fetch
 
 import chisel3._
 import chisel3.util._
-import lltriscv.core.DataType
+
+import lltriscv.core._
 import lltriscv.core.decode.DecodeStageEntry
 import lltriscv.core.execute.MemoryErrorCode
 
 /*
- * Decode entry
+ * Fetch entry
  *
  * Copyright (C) 2024-2025 LoveLonelyTime
  */
 
+/** Instruction TLB work entry
+  *
+  * Buffer ITLB table entries
+  */
 class ITLBWorkEntry extends Bundle {
-  val vpn = UInt(20.W) // Virtual page number
-  val ppn = UInt(20.W) // Physical page numer
+  val vpn = DataType.vpn // Virtual page number
+  val ppn = DataType.ppn20 // Physical page numer
   val error = MemoryErrorCode()
   val valid = Bool()
 }
 
-class ICacheLineWorkEntry extends Bundle {
-  val content = Vec(8, UInt(16.W))
-  val address = DataType.address
+/** Instruction cache line work entry
+  *
+  * Buffer instruction cache lines
+  *
+  * @param cacheLineDepth
+  *   Instruction cache line depth
+  */
+class ICacheLineWorkEntry(cacheLineDepth: Int) extends Bundle {
+  val content = Vec(cacheLineDepth, DataType.half)
+  val address = DataType.address // Aligned cache line address
   val error = MemoryErrorCode()
   val valid = Bool()
 }
 
+/** Raw instruction entry
+  *
+  * An instruction merged
+  */
 class RawInstructionEntry extends Bundle {
   val instruction = DataType.instruction
-  val compress = Bool()
+  val compress = Bool() // A compression instruction?
   val error = MemoryErrorCode()
   val valid = Bool()
 }
 
+/** Speculative entry
+  *
+  * An instruction predicted
+  */
 class SpeculativeEntry extends Bundle {
   val instruction = DataType.instruction // Instruction
   val pc = DataType.address // Corresponding PC
