@@ -2,7 +2,9 @@ package lltriscv.core.record
 
 import chisel3._
 import chisel3.util._
+
 import lltriscv.core._
+
 import lltriscv.utils.CoreUtils
 import lltriscv.utils.ChiselUtils._
 
@@ -16,7 +18,7 @@ import lltriscv.utils.ChiselUtils._
  * Copyright (C) 2024-2025 LoveLonelyTime
  */
 
-/** ROB (ReOrder Buffer) component
+/** ROB components
   *
   * Implementation using read/write pointer queue
   *
@@ -29,19 +31,16 @@ class ROB(depth: Int) extends Module {
   val io = IO(new Bundle {
     // Retire interface
     val retired = DecoupledIO(DataType.receipt)
-
     /*
      * Alloc interface
      * Return the primary receipt of the table item.
      * The receipts of two table entries are (primary receipt << 1 | 1, primary receipt << 1 | 0)
      */
     val alloc = DecoupledIO(DataType.receipt)
-
     // ROB table interfaces
-    val tableWrite = Flipped(new ROBTableWriteIO())
-    val tableCommit = Flipped(new ROBTableCommitIO())
-    val tableRetire = new ROBTableRetireIO(depth)
-
+    val robTableWrite = Flipped(new ROBTableWriteIO())
+    val robTableCommit = Flipped(new ROBTableCommitIO())
+    val robTableRetire = new ROBTableRetireIO(depth)
     // Recovery interface
     val recover = Input(Bool())
   })
@@ -50,27 +49,26 @@ class ROB(depth: Int) extends Module {
   private val table = RegInit(Vec(depth * 2, new ROBTableEntry()).zero)
 
   // Table write logic
-  when(io.tableWrite.wen) {
-    for (i <- 0 until 2) {
-      table(io.tableWrite.entries(i).id).pc := io.tableWrite.entries(i).pc
-      table(io.tableWrite.entries(i).id).spec := io.tableWrite.entries(i).spec
-      table(io.tableWrite.entries(i).id).rd := io.tableWrite.entries(i).rd
-      table(io.tableWrite.entries(i).id).valid := io.tableWrite.entries(i).valid
-      table(io.tableWrite.entries(i).id).commit := false.B
+  when(io.robTableWrite.wen) {
+    io.robTableWrite.entries.foreach { entry =>
+      table(entry.id).pc := entry.pc
+      table(entry.id).spec := entry.spec
+      table(entry.id).rd := entry.rd
+      table(entry.id).valid := entry.valid
+      table(entry.id).commit := false.B
     }
   }
 
   // Table commit logic
-  for (i <- 0 until 2) {
-    when(io.tableCommit.entries(i).valid) {
-      table(io.tableCommit.entries(i).rd).executeResult := io.tableCommit
-        .entries(i)
-      table(io.tableCommit.entries(i).rd).commit := true.B
+  io.robTableCommit.entries.foreach { entry =>
+    when(entry.valid) {
+      table(entry.rd).executeResult := entry
+      table(entry.rd).commit := true.B
     }
   }
 
   // Table retire logic
-  io.tableRetire.entries := table
+  io.robTableRetire.entries := table
 
   // Queue logic
   private val incrRead = WireInit(false.B)

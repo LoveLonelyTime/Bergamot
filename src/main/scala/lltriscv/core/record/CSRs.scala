@@ -67,7 +67,11 @@ class CSRs extends Module {
     is("h142".U) { responseRead(scauseReg) } // scause
     is("h143".U) { responseRead(stvalReg) } // stval
 
-    is("h180".U) { responseRead(satpReg) } // satp
+    is("h180".U) {
+      when(!(mstatusReg.mstatusView(20) && mstatusReg.privilege === PrivilegeType.S)) { // TVM
+        responseRead(satpReg)
+      }
+    } // satp
 
     is("hf14".U) { responseRead(DataType.operation.zeroAsUInt) } // mhartid
 

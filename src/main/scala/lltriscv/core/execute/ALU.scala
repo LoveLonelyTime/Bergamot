@@ -38,6 +38,8 @@ class ALU extends Module {
     val out = DecoupledIO(new ExecuteResultEntry())
     // CSR read interface
     val csr = Flipped(new CSRsReadIO())
+    // MStatus
+    val mstatus = Input(DataType.operation)
     // Current core privilege
     val privilege = Input(PrivilegeType())
     // Recovery interface
@@ -58,6 +60,7 @@ class ALU extends Module {
   aluDecodeStage.io.csr <> io.csr
   aluDecodeStage.io.privilege := io.privilege
   aluExecuteStage.io.privilege := io.privilege
+  aluExecuteStage.io.mstatus := io.mstatus
 }
 
 /** ALU decode stage
@@ -192,8 +195,12 @@ class ALUDecodeStage extends Module {
         io.out.bits.op1 := io.csr.data
         io.out.bits.op2 := Mux(inReg.func3(2), inReg.zimm, inReg.rs1.receipt)
 
+        /*
+         * Special protection is in CSRs
+         * But, general protection is here
+         */
         io.out.bits.csrError :=
-          io.csr.error || // Non-existent CSR
+          io.csr.error || // Special protection
             ((io.out.bits.op2 =/= 0.U || io.out.bits.op === ALUOperationType.csrrw) && inReg.imm(11, 10) === "b11".U) || // Read-only violate
             (io.privilege === PrivilegeType.S && inReg.imm(9, 8) === "b11".U) || (io.privilege === PrivilegeType.U && inReg.imm(9, 8) =/= "b00".U) // Unauthorized access
       }.otherwise { // General I
@@ -235,6 +242,8 @@ class ALUExecuteStage extends Module {
     val out = DecoupledIO(new ExecuteResultEntry())
     // Current core privilege
     val privilege = Input(PrivilegeType())
+    // MStatus
+    val mstatus = Input(DataType.operation)
     // Recovery interface
     val recover = Input(Bool())
   })
@@ -336,7 +345,7 @@ class ALUExecuteStage extends Module {
     }
 
     is(ALUOperationType.sret) {
-      when(io.privilege === PrivilegeType.S) { // OK
+      when(io.privilege === PrivilegeType.S && !io.mstatus(22)) { // TSR OK
         io.out.bits.xret := true.B
       }.otherwise { // Unauthorized access
         io.out.bits.triggerException(ExceptionCode.illegalInstruction)
@@ -352,18 +361,27 @@ class ALUExecuteStage extends Module {
     }
 
     is(ALUOperationType.fence) {
-      when(inReg.op2(4) || inReg.op2(6)) { // PO/PW
+      when(inReg.op2(4)) { // PW
+        // Visible to device
         io.out.bits.flushDCache := true.B
+        io.out.bits.flushL2DCache := true.B
       }
     }
 
     is(ALUOperationType.fencei) {
+      // Visible to ICache
       io.out.bits.flushDCache := true.B
-      io.out.bits.flushICache := true.B
+      io.out.bits.invalidICache := true.B
     }
 
     is(ALUOperationType.sfenceVMA) {
-      // TODO
+      when(io.privilege =/= PrivilegeType.S || io.mstatus(20)) { // TVM
+        io.out.bits.triggerException(ExceptionCode.illegalInstruction)
+      }.otherwise {
+        // Visible to TLB
+        io.out.bits.flushDCache := true.B
+        io.out.bits.invalidTLB := true.B
+      }
     }
 
     is(ALUOperationType.undefined) {

@@ -37,7 +37,7 @@ import decode.Decode
 import lltriscv.cache.Parallel2Flusher
 import lltriscv.core.execute.OutOfOrderedExecuteQueue
 import lltriscv.core.fetch.BranchPredictorUpdateIO
-import lltriscv.core.execute.UpdateLoadReservationIO
+import lltriscv.core.execute.LoadReservationUpdateIO
 
 /*
  * LLT RISC-V Core Exquisite integration
@@ -235,7 +235,7 @@ class CoreExecute(config: CoreConfig) extends Module {
 
     val dTLBFlush = Flipped(new FlushCacheIO())
     val dCacheFlush = Flipped(new FlushCacheIO())
-    val updateLoadReservation = Flipped(new UpdateLoadReservationIO())
+    val updateLoadReservation = Flipped(new LoadReservationUpdateIO())
 
     val retire = Flipped(new StoreQueueRetireIO())
 
@@ -300,6 +300,7 @@ class CoreExecute(config: CoreConfig) extends Module {
   // ALU
   alu.io.in <> aluExecuteQueue.io.deq
   alu.io.csr <> io.csr
+  alu.io.mstatus := io.mstatus
   alu.io.privilege := io.privilege
   alu.io.recover := io.recover
   aluExecuteQueue.io.broadcast <> io.broadcast
@@ -316,7 +317,7 @@ class CoreExecute(config: CoreConfig) extends Module {
   memory.io.dtlb <> dtlb.io.request
   memory.io.sma <> smaWithStoreQueueInterconnect.io.in
   memory.io.alloc <> storeQueue.io.alloc
-  memory.io.updateLoadReservation <> io.updateLoadReservation
+  memory.io.loadReservationUpdate <> io.updateLoadReservation
   memory.io.recover := io.recover
   memoryExecuteQueue.io.broadcast <> io.broadcast
   memoryExecuteQueue.io.recover := io.recover
@@ -360,7 +361,7 @@ class CoreBackend(config: CoreConfig) extends Module {
     val iCacheFlush = new FlushCacheIO()
     val tlbFlush = new FlushCacheIO()
 
-    val updateLoadReservation = new UpdateLoadReservationIO()
+    val updateLoadReservation = new LoadReservationUpdateIO()
   })
   private val broadcaster = Module(new RoundRobinBroadcaster(config.executeQueueWidth))
   private val instructionRetire = Module(new InstructionRetire(config.robDepth))
@@ -370,15 +371,15 @@ class CoreBackend(config: CoreConfig) extends Module {
   // Broadcaster
   broadcaster.io.queues <> io.deqs
   broadcaster.io.broadcast <> io.broadcast
-  broadcaster.io.robTableCommit <> rob.io.tableCommit
+  broadcaster.io.robTableCommit <> rob.io.robTableCommit
 
   // InstructionRetire
   instructionRetire.io.retired <> rob.io.retired
-  instructionRetire.io.tableRetire <> rob.io.tableRetire
-  instructionRetire.io.update <> io.update
-  instructionRetire.io.updateLoadReservation <> io.updateLoadReservation
+  instructionRetire.io.robTableRetire <> rob.io.robTableRetire
+  instructionRetire.io.registerUpdate <> io.update
+  instructionRetire.io.loadReservationUpdate <> io.updateLoadReservation
   instructionRetire.io.predictorUpdate <> io.predictorUpdate
-  instructionRetire.io.store <> io.store
+  instructionRetire.io.storeRetire <> io.store
   io.recover := instructionRetire.io.recover
   io.correctPC := instructionRetire.io.correctPC
   instructionRetire.io.csr <> csr.io.write
@@ -387,10 +388,12 @@ class CoreBackend(config: CoreConfig) extends Module {
   instructionRetire.io.dCacheFlush <> io.dCacheFlush
   instructionRetire.io.tlbFlush <> io.tlbFlush
 
+  instructionRetire.io.l2DCacheFlush.empty := true.B
+
   // ROB
   rob.io.alloc <> io.alloc
   rob.io.recover := instructionRetire.io.recover
-  rob.io.tableWrite <> io.tableWrite
+  rob.io.robTableWrite <> io.tableWrite
 
   // CSR
   csr.io.read <> io.read

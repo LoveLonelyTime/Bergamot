@@ -68,14 +68,11 @@ object MemoryErrorCode extends ChiselEnum {
   val none, misaligned, pageFault, memoryFault = Value
 }
 
-class LoadReservationEntry extends Bundle {
-  val address = DataType.address
-  val valid = Bool()
-}
-
-class UpdateLoadReservationIO extends Bundle {
-  val load = Output(Bool())
-  val address = Output(DataType.address)
+/** Load reservation update interface
+  */
+class LoadReservationUpdateIO extends Bundle {
+  val load = Output(Bool()) // LR or SC?
+  val address = Output(DataType.address) // LR address
   val valid = Output(Bool())
 }
 
@@ -123,4 +120,11 @@ class MemoryReadWriteStageEntry extends Bundle {
   val pc = DataType.address // Corresponding PC
   val next = DataType.address // Next PC
   val valid = Bool() // Validity
+}
+
+/** Load reservation entry
+  */
+class LoadReservationEntry extends Bundle {
+  val address = DataType.address
+  val valid = Bool()
 }

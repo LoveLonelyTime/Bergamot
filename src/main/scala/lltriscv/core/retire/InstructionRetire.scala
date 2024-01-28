@@ -2,15 +2,23 @@ package lltriscv.core.retire
 
 import chisel3._
 import chisel3.util._
+
 import lltriscv.core._
 import lltriscv.core.record.ROBTableRetireIO
 import lltriscv.core.record.RegisterUpdateIO
 import lltriscv.core.record.CSRsWriteIO
 import lltriscv.core.record.ExceptionRequestIO
 import lltriscv.core.record.StoreQueueRetireIO
-import lltriscv.cache.FlushCacheIO
+import lltriscv.core.record.ROBTableEntry
 import lltriscv.core.fetch.BranchPredictorUpdateIO
-import lltriscv.core.execute.UpdateLoadReservationIO
+import lltriscv.core.execute.LoadReservationUpdateIO
+import lltriscv.core.execute.LoadReservationEntry
+import lltriscv.core.execute.ExecuteResultEntry
+
+import lltriscv.cache.FlushCacheIO
+
+import lltriscv.utils.CoreUtils._
+import lltriscv.utils.ChiselUtils._
 
 /*
  * Instruction retire
@@ -34,13 +42,15 @@ class InstructionRetire(depth: Int) extends Module {
     // Retired interface
     val retired = Flipped(DecoupledIO(DataType.receipt))
     // Table retire interface
-    val tableRetire = Flipped(new ROBTableRetireIO(depth))
+    val robTableRetire = Flipped(new ROBTableRetireIO(depth))
     // Register update interface
-    val update = new RegisterUpdateIO()
+    val registerUpdate = new RegisterUpdateIO()
+    // Load reservation update interface
+    val loadReservationUpdate = new LoadReservationUpdateIO()
     // Predictor update interface
     val predictorUpdate = new BranchPredictorUpdateIO()
     // Store queue interface
-    val store = new StoreQueueRetireIO()
+    val storeRetire = new StoreQueueRetireIO()
     // Recovery interface
     val recover = Output(new Bool())
     val correctPC = Output(DataType.address)
@@ -48,99 +58,85 @@ class InstructionRetire(depth: Int) extends Module {
     val csr = new CSRsWriteIO()
     // Exception interface
     val exception = new ExceptionRequestIO()
-
-    val updateLoadReservation = new UpdateLoadReservationIO()
-
     // Flush interface
     val dCacheFlush = new FlushCacheIO()
+    val l2DCacheFlush = new FlushCacheIO()
     val iCacheFlush = new FlushCacheIO()
     val tlbFlush = new FlushCacheIO()
   })
 
   private object Status extends ChiselEnum {
-    val retire, dcache, icache, tlb = Value
+    val retire, dCache, l2DCache, iCache, tlb = Value
   }
 
   private val statusReg = RegInit(Status.retire)
 
   private val flushID = RegInit(0.U)
 
-  private val retireEntries =
-    VecInit(
-      io.tableRetire.entries(io.retired.bits(30, 0) ## 0.U),
-      io.tableRetire.entries(io.retired.bits(30, 0) ## 1.U)
-    )
-
-  private val retireValid = VecInit(
-    retireEntries(0).commit ||
-      !retireEntries(0).valid,
-    retireEntries(1).commit ||
-      !retireEntries(1).valid
+  // Retire entries
+  private val retireEntries = VecInit(
+    io.robTableRetire.entries(io.retired.bits(30, 0) ## 0.U),
+    io.robTableRetire.entries(io.retired.bits(30, 0) ## 1.U)
   )
 
+  private val retireValid = retireEntries.map(item => item.commit || !item.valid)
+
+  // Init interface
   io.recover := false.B
   io.correctPC := 0.U
-  io.update.entries.foreach(item => {
-    item.rd := 0.U
-    item.result := 0.U
-  })
-
-  io.predictorUpdate.entries.foreach(item => {
-    item.address := 0.U
-    item.jump := false.B
-    item.pc := 0.U
-    item.valid := false.B
-  })
-
-  io.store.entries.foreach(item => {
-    item.en := false.B
-    item.id := 0.U
-  })
-  io.csr.wen := false.B
-  io.csr.address := 0.U
-  io.csr.data := 0.U
-
-  io.exception.xret := false.B
-  io.exception.trigger := false.B
-  io.exception.exceptionPC := 0.U
-  io.exception.exceptionVal := 0.U
-  io.exception.exceptionCode := 0.U
-
+  io.registerUpdate <> new RegisterUpdateIO().zero
+  io.predictorUpdate <> new BranchPredictorUpdateIO().zero
+  io.loadReservationUpdate <> new LoadReservationUpdateIO().zero
+  io.storeRetire <> new StoreQueueRetireIO().zero
+  io.csr <> new CSRsWriteIO().zero
+  io.exception <> new ExceptionRequestIO().zero
   io.dCacheFlush.req := false.B
+  io.l2DCacheFlush.req := false.B
   io.iCacheFlush.req := false.B
   io.tlbFlush.req := false.B
 
-  io.updateLoadReservation.load := false.B
-  io.updateLoadReservation.address := 0.U
-  io.updateLoadReservation.valid := false.B
+  // Assertion functions
+  private def hasException(entry: ROBTableEntry) =
+    entry.valid && entry.executeResult.exception
+  private def hasBranch(entry: ROBTableEntry) =
+    entry.valid && entry.executeResult.real =/= entry.spec
+  private def hasCSR(entry: ROBTableEntry) =
+    entry.valid && entry.executeResult.writeCSR
+  private def hasXRet(entry: ROBTableEntry) =
+    entry.valid && entry.executeResult.xret
+  private def hasFlush(entry: ROBTableEntry) =
+    entry.valid && (entry.executeResult.flushDCache ||
+      entry.executeResult.flushL2DCache ||
+      entry.executeResult.invalidICache ||
+      entry.executeResult.invalidTLB)
 
-  private def gotoExceptionHandler(id: Int) = {
+  // Path functions
+  private def gotoExceptionHandler(entry: ROBTableEntry) = {
     io.recover := true.B
-
     io.exception.trigger := true.B
-    io.exception.exceptionPC := retireEntries(id).pc
+    io.exception.exceptionPC := entry.pc
     io.exception.exceptionVal := 0.U
-    io.exception.exceptionCode := retireEntries(id).executeResult.exceptionCode
+    io.exception.exceptionCode := entry.executeResult.exceptionCode
     io.correctPC := io.exception.handlerPC
 
     io.retired.ready := true.B
-    printf("Exception!!!! pc = %d\n", retireEntries(id).pc)
+    printf("Exception!!!! pc = %d\n", entry.pc)
   }
 
-  private def gotoRecoveryPath(id: Int) = {
+  private def gotoRecoveryPath(entry: ROBTableEntry) = {
     io.recover := true.B
-    io.correctPC := retireEntries(id).executeResult.real
+    io.correctPC := entry.executeResult.real
 
     io.retired.ready := true.B
     printf(
       "spec violate!!!: pc = %d, sepc = %d, real = %d\n",
-      retireEntries(id).pc,
-      retireEntries(id).spec,
-      retireEntries(id).executeResult.real
+      entry.pc,
+      entry.spec,
+      entry.executeResult.real
     )
   }
 
-  private def gotoXRetPath(id: Int) = {
+  private def gotoXRetPath(entry: ROBTableEntry) = {
     io.exception.xret := true.B
     io.recover := true.B
     io.correctPC := io.exception.handlerPC
@@ -149,31 +145,33 @@ class InstructionRetire(depth: Int) extends Module {
 
     printf(
       "xret !!!: pc = %d\n",
-      retireEntries(id).pc
+      entry.pc
     )
   }
 
-  private def gotoCSRPath(id: Int) = {
+  private def gotoCSRPath(entry: ROBTableEntry) = {
     io.recover := true.B
-    io.correctPC := retireEntries(id).executeResult.real
+    io.correctPC := entry.executeResult.real
 
     io.retired.ready := true.B
   }
 
-  private def hasException(id: Int) = retireEntries(id).valid && retireEntries(id).executeResult.exception
-  private def hasBranch(id: Int) = retireEntries(id).valid && retireEntries(id).executeResult.real =/= retireEntries(id).spec
+  private def gotoFlushPath(id: Int) = {
+    statusReg := Status.dCache
+    flushID := id.U
+  }
 
-  private def hasCSR(id: Int) = retireEntries(id).valid && retireEntries(id).executeResult.writeCSR
-  private def hasXRet(id: Int) = retireEntries(id).valid && retireEntries(id).executeResult.xret
-  private def hasFlush(id: Int) = retireEntries(id).valid && (retireEntries(id).executeResult.flushDCache || retireEntries(id).executeResult.flushICache || retireEntries(id).executeResult.flushTLB)
-
+  // Update functions
   private def updateRegister(id: Int) = {
-    io.update.entries(id).rd := retireEntries(id).rd
-    io.update.entries(id).result := retireEntries(id).executeResult.result
+    io.registerUpdate.entries(id).rd := retireEntries(id).rd
+    io.registerUpdate.entries(id).result := retireEntries(id).executeResult.result
 
     // Update predictor
     when(retireEntries(id).executeResult.branch) {
-      updatePredictor(id)
+      io.predictorUpdate.entries(id).valid := true.B
+      io.predictorUpdate.entries(id).jump := retireEntries(id).executeResult.real =/= retireEntries(id).executeResult.next
+      io.predictorUpdate.entries(id).pc := retireEntries(id).pc
+      io.predictorUpdate.entries(id).address := retireEntries(id).executeResult.real
     }
     printf(
       "retired instruction: pc = %d , r = %d, v = %d\n",
@@ -183,17 +181,10 @@ class InstructionRetire(depth: Int) extends Module {
     )
   }
 
-  private def updatePredictor(id: Int) = {
-    io.predictorUpdate.entries(id).valid := true.B
-    io.predictorUpdate.entries(id).jump := retireEntries(id).executeResult.real =/= retireEntries(id).executeResult.next
-    io.predictorUpdate.entries(id).pc := retireEntries(id).pc
-    io.predictorUpdate.entries(id).address := retireEntries(id).executeResult.real
-  }
-
   private def retireStoreQueue(id: Int) = {
     when(retireEntries(id).executeResult.write) {
-      io.store.entries(id).en := true.B
-      io.store.entries(id).id := retireEntries(id).executeResult.writeID
+      io.storeRetire.entries(id).valid := true.B
+      io.storeRetire.entries(id).id := retireEntries(id).executeResult.writeID
     }
   }
 
@@ -205,79 +196,79 @@ class InstructionRetire(depth: Int) extends Module {
 
   private def updateLoadReservation(id: Int) = {
     when(retireEntries(id).executeResult.sc) {
-      io.updateLoadReservation.load := false.B
-      io.updateLoadReservation.valid := true.B
+      io.loadReservationUpdate.load := false.B
+      io.loadReservationUpdate.valid := true.B
     }.elsewhen(retireEntries(id).executeResult.lr) {
-      io.updateLoadReservation.load := true.B
-      io.updateLoadReservation.address := retireEntries(id).executeResult.lrAddress
-      io.updateLoadReservation.valid := true.B
+      io.loadReservationUpdate.load := true.B
+      io.loadReservationUpdate.address := retireEntries(id).executeResult.lrAddress
+      io.loadReservationUpdate.valid := true.B
     }
   }
 
   io.retired.ready := false.B
-  when(statusReg === Status.retire) {
-    when(io.retired.valid && retireValid(0) && retireValid(1)) {
-      when(hasException(0)) { // Exception ?
-        gotoExceptionHandler(0)
-      }.elsewhen(hasXRet(0)) { // XRet ?
-        gotoXRetPath(0)
-      }.elsewhen(hasCSR(0)) { // CSR ?
-        writeCSRs(0)
-        updateRegister(0)
-        gotoCSRPath(0)
-      }.elsewhen(hasBranch(0)) { // Branch ?
-        updateRegister(0)
-        gotoRecoveryPath(0)
-      }.elsewhen(hasFlush(0)) { // Flush ?
-        statusReg := Status.dcache
-        flushID := 0.U
-      }.otherwise { // Normal 0
-        when(retireEntries(0).valid) {
-          updateRegister(0)
-          updateLoadReservation(0)
-          retireStoreQueue(0)
-        }
+  when(statusReg === Status.retire && io.retired.valid && retireValid.reduce(_ && _)) {
+    val grant = VecInit2(false.B)
 
-        when(hasException(1)) { // Exception ?
-          gotoExceptionHandler(1)
-        }.elsewhen(hasXRet(1)) { // XRet ?
-          gotoXRetPath(1)
-        }.elsewhen(hasCSR(1)) { // CSR ?
-          writeCSRs(1)
-          updateRegister(1)
-          gotoCSRPath(1)
-        }.elsewhen(hasBranch(1)) { // Branch ?
-          updateRegister(1)
-          gotoRecoveryPath(1)
-        }.elsewhen(hasFlush(1)) { // Flush ?
-          statusReg := Status.dcache
-          flushID := 1.U
-        }.otherwise { // Normal 1
-          when(retireEntries(1).valid) {
-            updateLoadReservation(1)
-            updateRegister(1)
-            retireStoreQueue(1)
+    retireEntries.zipWithIndex.foreach { case (entry, id) =>
+      val granted = if (id == 0) true.B else grant(id - 1)
+      when(granted) {
+        when(hasException(entry)) { // Exception ?
+          gotoExceptionHandler(entry)
+        }.elsewhen(hasXRet(entry)) { // XRet ?
+          gotoXRetPath(entry)
+        }.elsewhen(hasCSR(entry)) { // CSR ?
+          writeCSRs(id)
+          updateRegister(id)
+          gotoCSRPath(entry)
+        }.elsewhen(hasBranch(entry)) { // Branch ?
+          updateRegister(id)
+          gotoRecoveryPath(entry)
+        }.elsewhen(hasFlush(entry)) { // Flush ?
+          gotoFlushPath(id)
+        }.otherwise {
+          when(entry.valid) {
+            updateRegister(id)
+            updateLoadReservation(id)
+            retireStoreQueue(id)
           }
-          io.retired.ready := true.B
+          grant(id) := true.B
+
+          if (id == retireEntries.length - 1) {
+            io.retired.ready := true.B
+          }
         }
       }
     }
   }
 
-  when(statusReg === Status.dcache) {
+  // Flush process
+  // dCache -> l2DCache -> iCache -> TLB
+  when(statusReg === Status.dCache) {
     when(retireEntries(flushID).executeResult.flushDCache) {
       io.dCacheFlush.req := true.B
 
       when(io.dCacheFlush.empty) { // Finish
-        statusReg := Status.icache
+        statusReg := Status.l2DCache
       }
     }.otherwise {
-      statusReg := Status.icache
+      statusReg := Status.l2DCache
     }
   }
 
-  when(statusReg === Status.icache) {
-    when(retireEntries(flushID).executeResult.flushICache) {
+  when(statusReg === Status.l2DCache) {
+    when(retireEntries(flushID).executeResult.flushL2DCache) {
+      io.l2DCacheFlush.req := true.B
+
+      when(io.l2DCacheFlush.empty) { // Finish
+        statusReg := Status.iCache
+      }
+    }.otherwise {
+      statusReg := Status.iCache
+    }
+  }
+
+  when(statusReg === Status.iCache) {
+    when(retireEntries(flushID).executeResult.invalidICache) {
       io.iCacheFlush.req := true.B
 
       when(io.iCacheFlush.empty) { // Finish
@@ -289,7 +280,7 @@ class InstructionRetire(depth: Int) extends Module {
   }
 
   when(statusReg === Status.tlb) {
-    when(retireEntries(flushID).executeResult.flushTLB) {
+    when(retireEntries(flushID).executeResult.invalidTLB) {
       io.tlbFlush.req := true.B
 
       when(io.tlbFlush.empty) { // Finish

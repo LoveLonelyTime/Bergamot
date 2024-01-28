@@ -78,5 +78,8 @@ object CoreUtils {
 object Sv32 {
   def getVPN(vaddr: UInt) = vaddr(31, 12)
   def getOffset(vaddr: UInt) = vaddr(11, 0)
+  def getMOffset(vaddr: UInt) = vaddr(21, 0)
   def get32PPN(paddr: UInt) = paddr(31, 12)
+  def getVPN0(vaddr: UInt) = vaddr(21, 12)
+  def getVPN1(vaddr: UInt) = vaddr(31, 22)
 }

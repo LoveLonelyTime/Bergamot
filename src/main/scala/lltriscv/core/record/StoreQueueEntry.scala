@@ -2,8 +2,11 @@ package lltriscv.core.record
 
 import chisel3._
 import chisel3.util._
-import lltriscv.core.DataType
+
+import lltriscv.core._
 import lltriscv.core.execute.MemoryAccessLength
+
+import lltriscv.utils.CoreUtils._
 
 /*
  * Store queue entry
@@ -17,7 +20,7 @@ class StoreQueueAllocIO extends Bundle {
   val writeType = Output(MemoryAccessLength())
   val address = Output(DataType.address)
   val data = Output(DataType.operation)
-  val id = Input(DataType.receipt)
+  val id = Input(DataType.receipt) // Store queue entry receipt
   val valid = Output(Bool())
   val ready = Input(Bool())
 }
@@ -35,11 +38,10 @@ class StoreQueueDequeueEntry extends Bundle {
   */
 class StoreQueueRetireIO extends Bundle {
   val entries = Output(
-    Vec(
-      2,
+    Vec2(
       new Bundle {
         val id = DataType.receipt
-        val en = Bool()
+        val valid = Bool()
       }
     )
   )

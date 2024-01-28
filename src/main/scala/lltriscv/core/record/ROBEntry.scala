@@ -6,6 +6,8 @@ import chisel3.util._
 import lltriscv.core._
 import lltriscv.core.execute.ExecuteResultEntry
 
+import lltriscv.utils.CoreUtils._
+
 /*
  * ROB entry
  *
@@ -31,8 +33,7 @@ class ROBTableEntry extends Bundle {
   */
 class ROBTableWriteIO extends Bundle {
   val entries = Output(
-    Vec(
-      2,
+    Vec2(
       new Bundle {
         val id = DataType.receipt
         val pc = DataType.address
@@ -61,7 +62,5 @@ class ROBTableCommitIO extends Bundle {
   *   The number of ROB table items, each table entry stores 2 instructions.
   */
 class ROBTableRetireIO(depth: Int) extends Bundle {
-  require(depth > 0, "ROB table depth must be greater than 0")
-
   val entries = Output(Vec(depth * 2, new ROBTableEntry()))
 }

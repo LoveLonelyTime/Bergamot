@@ -101,8 +101,9 @@ class ExecuteResultEntry extends Bundle {
 
   // Fence field
   val flushDCache = Bool()
-  val flushICache = Bool()
-  val flushTLB = Bool()
+  val flushL2DCache = Bool()
+  val invalidICache = Bool()
+  val invalidTLB = Bool()
 
   // Predictor field
   val branch = Bool()

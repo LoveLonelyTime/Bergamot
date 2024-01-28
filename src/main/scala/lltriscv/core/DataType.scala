@@ -28,6 +28,7 @@ object DataType {
   def aByte = UInt(8.W) // A Byte
   def vpn = UInt(20.W) // Virtual page number
   def ppn20 = UInt(20.W) // 20-bits physical page number
+  def ppn22 = UInt(22.W) // 22-bits physical page number
   def half = UInt(16.W) // half word
 }
 

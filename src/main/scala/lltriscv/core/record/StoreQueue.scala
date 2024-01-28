@@ -2,12 +2,16 @@ package lltriscv.core.record
 
 import chisel3._
 import chisel3.util._
-import lltriscv.utils.CoreUtils
+
 import lltriscv.core.execute.MemoryAccessLength
+
 import lltriscv.bus.SMAWriterIO
 
-import lltriscv.utils.ChiselUtils._
 import lltriscv.cache.FlushCacheIO
+
+import lltriscv.utils.CoreUtils._
+import lltriscv.utils.ChiselUtils._
+import lltriscv.core.DataType
 
 /*
  * Store queue
@@ -35,7 +39,7 @@ class StoreQueue(depth: Int) extends Module {
     val retire = Flipped(new StoreQueueRetireIO())
     // Bypass interface
     val bypass = Flipped(new StoreQueueBypassIO())
-    // All retired have been dequeued
+    // Flush request interface: Dequeue all retired
     val flush = Flipped(new FlushCacheIO())
     // Recovery interface
     val recover = Input(Bool())
@@ -46,8 +50,8 @@ class StoreQueue(depth: Int) extends Module {
 
   private val incrRead = WireInit(false.B)
   private val incrWrite = WireInit(false.B)
-  private val (readPtr, nextRead) = CoreUtils.pointer(depth, incrRead)
-  private val (writePtr, nextWrite) = CoreUtils.pointer(depth, incrWrite)
+  private val (readPtr, nextRead) = pointer(depth, incrRead)
+  private val (writePtr, nextWrite) = pointer(depth, incrWrite)
 
   private val emptyReg = RegInit(true.B)
   private val fullReg = RegInit(false.B)
@@ -68,8 +72,7 @@ class StoreQueue(depth: Int) extends Module {
   io.deq.bits.valid := queue(readPtr).valid
 
   // Queue logic
-  private val op = (io.alloc.valid && io.alloc.ready) ##
-    (io.deq.valid && io.deq.ready)
+  private val op = (io.alloc.valid && io.alloc.ready) ## io.deq.fire
   private val doWrite = WireDefault(false.B)
   private val doRead = WireDefault(false.B)
   switch(op) {
@@ -109,8 +112,9 @@ class StoreQueue(depth: Int) extends Module {
 
   // Bypass logic
   private val laneStrobes = VecInit.fill(4)(false.B)
-  private val laneData = VecInit.fill(4)(0.U(8.W))
+  private val laneData = VecInit.fill(4)(DataType.aByte.zeroAsUInt)
 
+  // TODO: I want to optimize this code snippet
   // Overlapping window
   private def bypassEntry(id: Int) = {
     when(queue(id).valid) {
@@ -221,13 +225,11 @@ class StoreQueue(depth: Int) extends Module {
     }
   }
 
-  // Empty logic
-  val retireValues = VecInit.fill(depth)(false.B)
-  for (i <- 0 until depth) retireValues(i) := queue(i).valid && queue(i).retire
-  io.flush.empty := !retireValues.reduceTree(_ && _)
-
   io.bypass.data := laneData(3) ## laneData(2) ## laneData(1) ## laneData(0)
   io.bypass.strobe := laneStrobes(3) ## laneStrobes(2) ## laneStrobes(1) ## laneStrobes(0)
+
+  // Empty logic
+  io.flush.empty := !VecInit(queue.map(entry => entry.valid && entry.retire)).reduceTree(_ || _)
 
   // Recovery logic
   when(io.recover) {
@@ -239,10 +241,10 @@ class StoreQueue(depth: Int) extends Module {
   }
 
   // Retire logic
-  for (i <- 0 until 2) {
-    when(io.retire.entries(i).en) {
-      queue(io.retire.entries(i).id).retire := true.B
-      queue(io.retire.entries(i).id).valid := true.B // Recovery bypass
+  io.retire.entries.foreach { entry =>
+    when(entry.valid) {
+      queue(entry.id).retire := true.B
+      queue(entry.id).valid := true.B // Recovery bypass
     }
   }
 }

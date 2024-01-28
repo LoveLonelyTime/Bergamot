@@ -2,14 +2,18 @@ package lltriscv.core.record
 
 import chisel3._
 import chisel3.util._
-import lltriscv.core.DataType
-import lltriscv.bus.SMAReaderIO
-import lltriscv.utils.CoreUtils
+
 import lltriscv.core.execute.MemoryAccessLength
+import lltriscv.core.execute.MemoryErrorCode
+import lltriscv.core.DataType
+
+import lltriscv.cache.FlushCacheIO
+
+import lltriscv.bus.SMAReaderIO
 
 import lltriscv.utils.ChiselUtils._
-import lltriscv.cache.FlushCacheIO
-import lltriscv.core.execute.MemoryErrorCode
+import lltriscv.utils.CoreUtils._
+import lltriscv.utils.Sv32
 
 /*
  * TLB (Translation Lookaside Buffer)
@@ -41,8 +45,7 @@ class TLB(depth: Int, data: Boolean) extends Module {
     val satp = Input(DataType.operation)
     // mstatus
     val mstatus = Input(DataType.operation)
-
-    // Flush request interface
+    // Flush request interface: Invalidate all entry
     val flush = Flipped(new FlushCacheIO())
   })
 
@@ -62,8 +65,17 @@ class TLB(depth: Int, data: Boolean) extends Module {
   }
 
   private val incrVictim = WireInit(false.B)
-  private val (victimPtr, nextVictimPtr) = CoreUtils.pointer(depth, incrVictim)
+  private val (victimPtr, nextVictimPtr) = pointer(depth, incrVictim)
 
+  /** Alloc TLB entry
+    *
+    * @param pte
+    *   PTE entry
+    * @param mPage
+    *   A 4MiB-page PTE entry
+    * @param global
+    *   Inherited global field
+    */
   private def alloc(pte: UInt, mPage: Bool, global: Bool) = {
     incrVictim := true.B
     val victim = table(victimPtr)
@@ -78,10 +90,9 @@ class TLB(depth: Int, data: Boolean) extends Module {
   }
 
   // Empty
-  private val validValues = VecInit.fill(depth)(false.B)
-  for (i <- 0 until depth) validValues(i) := table(i).valid
-  io.flush.empty := !validValues.reduceTree(_ || _)
+  io.flush.empty := !VecInit(table.map(_.valid)).reduceTree(_ || _)
 
+  // Actual paging privilege level (MPRV)
   private val pagePrivilege = Mux(
     io.privilege === PrivilegeType.M,
     Mux(
@@ -92,63 +103,8 @@ class TLB(depth: Int, data: Boolean) extends Module {
     io.privilege
   )
 
-  io.request.ready := false.B
-  io.request.paddress := 0.U
-  io.request.error := MemoryErrorCode.none
-  // Sample
-  when(statusReg === Status.idle) {
-    when(io.flush.req) { // Flush
-      for (i <- 0 until depth) {
-        table(i).valid := false.B
-      }
-    }.elsewhen(io.request.valid) {
-      // MPRV check
-      when(pagePrivilege === PrivilegeType.M || !io.satp(31)) { // Page memory disabled
-        io.request.paddress := io.request.vaddress
-        io.request.error := MemoryErrorCode.none
-        io.request.ready := true.B
-      }.otherwise { // Page memory enabled
-        statusReg := Status.lookup
-      }
-    }
-  }
-
-  // Lookup
-  when(statusReg === Status.lookup) {
-    // Fully-associative
-    val grants = VecInit.fill(depth)(false.B)
-    for (i <- 0 until depth) {
-      val matchAddress = Mux(
-        table(i).mPage,
-        io.request.vaddress(31, 22) === table(i).vpn(19, 10), // 4MiB page
-        io.request.vaddress(31, 12) === table(i).vpn // 4KiB page
-      )
-
-      val matchASID = table(i).g || table(i).asid === io.satp(30, 22)
-      grants(i) := table(i).valid && matchAddress && matchASID
-    }
-
-    when(grants.reduceTree(_ || _)) { // Hit
-      for (i <- 0 until depth) {
-        when(grants(i)) {
-          when(table(i).v && pteDACheck(table(i).da) && ptePrivilegeCheck(table(i).uxwr)) {
-            // 34 -> 32
-            io.request.paddress := Mux(
-              table(i).mPage,
-              table(i).ppn(21, 10) ## io.request.vaddress(21, 0), // 4MiB page
-              table(i).ppn ## io.request.vaddress(11, 0) // 4KiB page
-            )
-          }.otherwise { // Fault
-            io.request.error := MemoryErrorCode.pageFault
-          }
-        }
-      }
-
-      io.request.ready := true.B
-      statusReg := Status.idle
-    }.otherwise { // Miss
-      statusReg := Status.vpn1
-    }
+  private def alignmentCheck(entry: TLBEntry) = {
+    !entry.mPage || entry.ppn(10, 0) === 0.U
   }
 
   private def pteDACheck(da: UInt) = {
@@ -180,15 +136,70 @@ class TLB(depth: Int, data: Boolean) extends Module {
     xwrResult && suResult
   }
 
-  io.sma.valid := false.B
-  io.sma.readType := MemoryAccessLength.byte
-  io.sma.address := 0.U
+  io.request <> new TLBRequestIO().zero
+
+  // Sample
+  when(statusReg === Status.idle) {
+    when(io.flush.req) { // Flush
+      table.foreach(_.valid := false.B)
+    }.elsewhen(io.request.valid) {
+      // MPRV check
+      when(pagePrivilege === PrivilegeType.M || !io.satp(31)) { // Page memory disabled
+        io.request.paddress := io.request.vaddress
+        io.request.error := MemoryErrorCode.none
+        io.request.ready := true.B
+      }.otherwise { // Page memory enabled
+        statusReg := Status.lookup
+      }
+    }
+  }
+
+  // Lookup
+  when(statusReg === Status.lookup) {
+    // Fully-associative
+    val grant = VecInit.fill(depth)(false.B)
+    grant.zip(table).foreach { case (granted, entry) =>
+      val matchAddress = Mux(
+        entry.mPage,
+        Sv32.getVPN1(io.request.vaddress) === entry.vpn(19, 10), // 4MiB page
+        Sv32.getVPN(io.request.vaddress) === entry.vpn // 4KiB page
+      )
+
+      val matchASID = entry.g || entry.asid === io.satp(30, 22)
+      granted := entry.valid && matchAddress && matchASID
+    }
+
+    when(grant.reduceTree(_ || _)) { // Hit
+
+      grant.zip(table).foreach { case (granted, entry) =>
+        when(granted) {
+          when(entry.v && pteDACheck(entry.da) && ptePrivilegeCheck(entry.uxwr) && alignmentCheck(entry)) {
+            // 34 -> 32
+            io.request.paddress := Mux(
+              entry.mPage,
+              entry.ppn(21, 10) ## Sv32.getMOffset(io.request.vaddress), // 4MiB page
+              entry.ppn ## Sv32.getOffset(io.request.vaddress) // 4KiB page
+            )
+          }.otherwise { // Fault
+            io.request.error := MemoryErrorCode.pageFault
+          }
+        }
+      }
+
+      io.request.ready := true.B
+      statusReg := Status.idle
+    }.otherwise { // Miss
+      statusReg := Status.vpn1
+    }
+  }
+
+  io.sma <> new SMAReaderIO().zero
 
   // TLB walk: vpn1
   private val vpn1Reg = RegInit(DataType.operation.zeroAsUInt)
   when(statusReg === Status.vpn1) {
     // PTE-1 entry address (34 -> 32)
-    io.sma.address := io.satp(21, 0) ## io.request.vaddress(31, 22) ## 0.U(2.W)
+    io.sma.address := io.satp(21, 0) ## Sv32.getVPN1(io.request.vaddress) ## 0.U(2.W)
     io.sma.readType := MemoryAccessLength.word
     io.sma.valid := true.B
     when(io.sma.ready) { // Finished
@@ -217,7 +228,7 @@ class TLB(depth: Int, data: Boolean) extends Module {
   // TLB walk: vpn0
   when(statusReg === Status.vpn0) {
     // PTE-2 entry address (34 -> 32)
-    io.sma.address := vpn1Reg(31, 10) ## io.request.vaddress(21, 12) ## 0.U(2.W)
+    io.sma.address := vpn1Reg(31, 10) ## Sv32.getVPN0(io.request.vaddress) ## 0.U(2.W)
     io.sma.readType := MemoryAccessLength.word
     io.sma.valid := true.B
     when(io.sma.ready) { // Finished
