@@ -383,7 +383,8 @@ class CoreBackend(config: CoreConfig) extends Module {
   io.recover := instructionRetire.io.recover
   io.correctPC := instructionRetire.io.correctPC
   instructionRetire.io.csr <> csr.io.write
-  instructionRetire.io.exception <> csr.io.exception
+  instructionRetire.io.trap <> csr.io.trap
+  instructionRetire.io.monitor <> csr.io.monitor
   instructionRetire.io.iCacheFlush <> io.iCacheFlush
   instructionRetire.io.dCacheFlush <> io.dCacheFlush
   instructionRetire.io.tlbFlush <> io.tlbFlush

@@ -5,6 +5,7 @@ import chisel3.util._
 
 import lltriscv.core._
 import lltriscv.core.decode.InstructionType
+import lltriscv.core.record.ExceptionCode
 
 import lltriscv.utils.ChiselUtils._
 import lltriscv.utils.CoreUtils._
@@ -180,7 +181,7 @@ class BranchExecuteStage extends Module {
 
   // Exception handler
   when(inReg.op === BranchOperationType.undefined) {
-    io.out.bits.triggerException(ExceptionCode.illegalInstruction)
+    io.out.bits.triggerException(ExceptionCode.illegalInstruction.U)
   }
 
   io.out.bits.result := inReg.next // Save next PC

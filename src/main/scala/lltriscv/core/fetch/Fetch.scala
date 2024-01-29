@@ -482,6 +482,7 @@ class InstructionExtender extends Module {
             rs1 := "b01".U ## instructionIn(4, 2)
             imm := instructionIn(10, 7) ## instructionIn(12, 11) ## instructionIn(5) ## instructionIn(6) ## "b00".U(2.W)
             instructionOut := imm(11, 0) ## "b00010".U(5.W) ## "b000".U(3.W) ## rs1 ## "b0010011".U(7.W)
+            when(instructionIn(12, 5) === 0.U) { instructionOut := 0.U } // nzuimm
           }
           is("b010".U) { // c.lw
             rd := "b01".U ## instructionIn(4, 2)

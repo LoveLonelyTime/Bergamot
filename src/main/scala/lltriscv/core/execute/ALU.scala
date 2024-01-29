@@ -7,6 +7,7 @@ import lltriscv.core._
 import lltriscv.core.decode.InstructionType
 import lltriscv.core.record.CSRsReadIO
 import lltriscv.core.record.PrivilegeType
+import lltriscv.core.record.ExceptionCode
 
 import lltriscv.utils.CoreUtils._
 import lltriscv.utils.ChiselUtils._
@@ -96,6 +97,8 @@ class ALUDecodeStage extends Module {
   // Decode logic
   io.out.bits := new ALUExecuteStageEntry().zero
   io.csr <> new CSRsReadIO().zero
+
+  io.out.bits.op := ALUOperationType.undefined
   // op
   switch(inReg.opcode(6, 2)) {
     is("b00100".U) { // ALU type I instructions
@@ -334,13 +337,13 @@ class ALUExecuteStage extends Module {
       }
     }
     is(ALUOperationType.ebreak) {
-      io.out.bits.triggerException(ExceptionCode.breakpoint)
+      io.out.bits.triggerException(ExceptionCode.breakpoint.U)
     }
     is(ALUOperationType.env) {
       switch(io.privilege) {
-        is(PrivilegeType.M) { io.out.bits.triggerException(ExceptionCode.environmentCallFromMMode) }
-        is(PrivilegeType.S) { io.out.bits.triggerException(ExceptionCode.environmentCallFromSMode) }
-        is(PrivilegeType.U) { io.out.bits.triggerException(ExceptionCode.environmentCallFromUMode) }
+        is(PrivilegeType.M) { io.out.bits.triggerException(ExceptionCode.environmentCallFromMMode.U) }
+        is(PrivilegeType.S) { io.out.bits.triggerException(ExceptionCode.environmentCallFromSMode.U) }
+        is(PrivilegeType.U) { io.out.bits.triggerException(ExceptionCode.environmentCallFromUMode.U) }
       }
     }
 
@@ -348,7 +351,7 @@ class ALUExecuteStage extends Module {
       when(io.privilege === PrivilegeType.S && !io.mstatus(22)) { // TSR OK
         io.out.bits.xret := true.B
       }.otherwise { // Unauthorized access
-        io.out.bits.triggerException(ExceptionCode.illegalInstruction)
+        io.out.bits.triggerException(ExceptionCode.illegalInstruction.U)
       }
     }
 
@@ -356,7 +359,7 @@ class ALUExecuteStage extends Module {
       when(io.privilege === PrivilegeType.M) { // OK
         io.out.bits.xret := true.B
       }.otherwise { // Unauthorized access
-        io.out.bits.triggerException(ExceptionCode.illegalInstruction)
+        io.out.bits.triggerException(ExceptionCode.illegalInstruction.U)
       }
     }
 
@@ -376,7 +379,7 @@ class ALUExecuteStage extends Module {
 
     is(ALUOperationType.sfenceVMA) {
       when(io.privilege =/= PrivilegeType.S || io.mstatus(20)) { // TVM
-        io.out.bits.triggerException(ExceptionCode.illegalInstruction)
+        io.out.bits.triggerException(ExceptionCode.illegalInstruction.U)
       }.otherwise {
         // Visible to TLB
         io.out.bits.flushDCache := true.B
@@ -385,20 +388,20 @@ class ALUExecuteStage extends Module {
     }
 
     is(ALUOperationType.undefined) {
-      io.out.bits.triggerException(ExceptionCode.illegalInstruction)
+      io.out.bits.triggerException(ExceptionCode.illegalInstruction.U)
     }
   }
 
   // CSR Error
   when(inReg.csrError) {
-    io.out.bits.triggerException(ExceptionCode.illegalInstruction)
+    io.out.bits.triggerException(ExceptionCode.illegalInstruction.U)
   }
 
   // Instruction cache line error
   when(inReg.error === MemoryErrorCode.memoryFault) {
-    io.out.bits.triggerException(ExceptionCode.instructionAccessFault)
+    io.out.bits.triggerException(ExceptionCode.instructionAccessFault.U)
   }.elsewhen(inReg.error === MemoryErrorCode.pageFault) {
-    io.out.bits.triggerException(ExceptionCode.instructionPageFault)
+    io.out.bits.triggerException(ExceptionCode.instructionPageFault.U)
   }
 
   io.out.bits.rd := inReg.rd

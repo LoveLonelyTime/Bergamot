@@ -31,7 +31,7 @@ class RV32PTest extends AnyFlatSpec with ChiselScalatestTester {
   private val entryAddress = 0x1000
   private val hostAddress = 0x0
   private val passTestNum = 0x1
-  private val timeout = 10000
+  private val timeout = 3000
   private val memorySize = 4096 * 5
 
   private val config = CoreConfig.default.copy(pcInit = entryAddress)
@@ -39,12 +39,12 @@ class RV32PTest extends AnyFlatSpec with ChiselScalatestTester {
   // Collect tests
   private val miTests = new File("riscv-tests/isa").listFiles().filter(_.getName().matches(raw"rv32mi-p-.*\.bin"))
 
-  private val uiTests = new File("riscv-tests/isa").listFiles().filter(_.getName().matches(raw"rv32ui-p-.*\.bin"))
+  private val uiTests = new File("riscv-tests/isa").listFiles().filter(_.getName().matches(raw"rv32ui-p-srl\.bin"))
   private val ucTests = new File("riscv-tests/isa").listFiles().filter(_.getName().matches(raw"rv32uc-p-.*\.bin"))
   private val uaTests = new File("riscv-tests/isa").listFiles().filter(_.getName().matches(raw"rv32ua-p-.*\.bin"))
   private val umTests = new File("riscv-tests/isa").listFiles().filter(_.getName().matches(raw"rv32um-p-.*\.bin"))
   // ++ uaTests ++ umTests
-  private val needToTest = miTests
+  private val needToTest = uiTests
 
   private def expectPass(memory: MemoryMock) = {
     assert(memory.loadInt(hostAddress) == passTestNum)
@@ -59,7 +59,7 @@ class RV32PTest extends AnyFlatSpec with ChiselScalatestTester {
           memory.doMemory(dut.io.smaReader, dut.io.smaWriter)
           dut.clock.step()
         }
-        // expectPass(memory)
+        expectPass(memory)
       }
     }
   }

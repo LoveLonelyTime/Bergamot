@@ -30,7 +30,7 @@ object BranchOperationType extends ChiselEnum {
    * Unconditional operation:
    * - jal: jump and link
    */
-  val none, undefined, eq, ne, lt, ge, ltu, geu, jal = Value
+  val undefined, none, eq, ne, lt, ge, ltu, geu, jal = Value
 }
 
 /** Branch execute stage entry

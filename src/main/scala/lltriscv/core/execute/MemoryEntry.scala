@@ -38,7 +38,7 @@ object MemoryOperationType extends ChiselEnum {
    * - lr: load reserved
    * - sc: store conditional
    */
-  val none, undefined, lb, lh, lw, lbu, lhu, sb, sh, sw, amoswap, amoadd, amoxor, amoand, amoor, amomin, amomax, amominu, amomaxu, lr, sc = Value
+  val undefined, none, lb, lh, lw, lbu, lhu, sb, sh, sw, amoswap, amoadd, amoxor, amoand, amoor, amomin, amomax, amominu, amomaxu, lr, sc = Value
 
   // By type
   val amoValues = List(amoswap, amoadd, amoxor, amoand, amoor, amomin, amomax, amominu, amomaxu)

@@ -7,18 +7,19 @@ import lltriscv.core._
 import lltriscv.core.record.ROBTableRetireIO
 import lltriscv.core.record.RegisterUpdateIO
 import lltriscv.core.record.CSRsWriteIO
-import lltriscv.core.record.ExceptionRequestIO
 import lltriscv.core.record.StoreQueueRetireIO
 import lltriscv.core.record.ROBTableEntry
 import lltriscv.core.fetch.BranchPredictorUpdateIO
 import lltriscv.core.execute.LoadReservationUpdateIO
 import lltriscv.core.execute.LoadReservationEntry
 import lltriscv.core.execute.ExecuteResultEntry
+import lltriscv.core.record.TrapRequestIO
 
 import lltriscv.cache.FlushCacheIO
 
 import lltriscv.utils.CoreUtils._
 import lltriscv.utils.ChiselUtils._
+import lltriscv.core.record.MonitorIO
 
 /*
  * Instruction retire
@@ -56,8 +57,10 @@ class InstructionRetire(depth: Int) extends Module {
     val correctPC = Output(DataType.address)
     // CSR write interface
     val csr = new CSRsWriteIO()
-    // Exception interface
-    val exception = new ExceptionRequestIO()
+    // Trap interface
+    val trap = new TrapRequestIO()
+    // Monitor interface
+    val monitor = new MonitorIO()
     // Flush interface
     val dCacheFlush = new FlushCacheIO()
     val l2DCacheFlush = new FlushCacheIO()
@@ -89,7 +92,8 @@ class InstructionRetire(depth: Int) extends Module {
   io.loadReservationUpdate <> new LoadReservationUpdateIO().zero
   io.storeRetire <> new StoreQueueRetireIO().zero
   io.csr <> new CSRsWriteIO().zero
-  io.exception <> new ExceptionRequestIO().zero
+  io.trap <> new TrapRequestIO().zero
+  io.monitor <> new MonitorIO().zero
   io.dCacheFlush.req := false.B
   io.l2DCacheFlush.req := false.B
   io.iCacheFlush.req := false.B
@@ -98,6 +102,8 @@ class InstructionRetire(depth: Int) extends Module {
   // Assertion functions
   private def hasException(entry: ROBTableEntry) =
     entry.valid && entry.executeResult.exception
+  private def hasInterrupt(entry: ROBTableEntry) =
+    entry.valid && io.trap.interruptPending
   private def hasBranch(entry: ROBTableEntry) =
     entry.valid && entry.executeResult.real =/= entry.spec
   private def hasCSR(entry: ROBTableEntry) =
@@ -113,14 +119,25 @@ class InstructionRetire(depth: Int) extends Module {
   // Path functions
   private def gotoExceptionHandler(entry: ROBTableEntry) = {
     io.recover := true.B
-    io.exception.trigger := true.B
-    io.exception.exceptionPC := entry.pc
-    io.exception.exceptionVal := 0.U
-    io.exception.exceptionCode := entry.executeResult.exceptionCode
-    io.correctPC := io.exception.handlerPC
+    io.trap.exceptionTrigger := true.B
+    io.trap.trapPC := entry.pc
+    io.trap.trapVal := 0.U // TODO
+    io.trap.trapCode := entry.executeResult.exceptionCode
+    io.correctPC := io.trap.handlerPC
 
     io.retired.ready := true.B
     printf("Exception!!!! pc = %d\n", entry.pc)
+  }
+
+  private def gotoInterruptHandler(entry: ROBTableEntry) = {
+    io.recover := true.B
+    io.trap.interruptTrigger := true.B
+    io.trap.trapPC := entry.pc
+    io.trap.trapVal := 0.U // TODO
+    io.correctPC := io.trap.handlerPC
+
+    io.retired.ready := true.B
+    printf("Interrupt!!!! pc = %d to= %d\n", entry.pc, io.trap.handlerPC)
   }
 
   private def gotoRecoveryPath(entry: ROBTableEntry) = {
@@ -137,9 +154,9 @@ class InstructionRetire(depth: Int) extends Module {
   }
 
   private def gotoXRetPath(entry: ROBTableEntry) = {
-    io.exception.xret := true.B
+    io.trap.xret := true.B
     io.recover := true.B
-    io.correctPC := io.exception.handlerPC
+    io.correctPC := io.trap.handlerPC
 
     io.retired.ready := true.B
 
@@ -208,28 +225,38 @@ class InstructionRetire(depth: Int) extends Module {
   io.retired.ready := false.B
   when(statusReg === Status.retire && io.retired.valid && retireValid.reduce(_ && _)) {
     val grant = VecInit2(false.B)
+    val retired = VecInit2(false.B)
+    io.monitor.instret := retired.foldLeft(0.U)(_ + _)
 
     retireEntries.zipWithIndex.foreach { case (entry, id) =>
       val granted = if (id == 0) true.B else grant(id - 1)
       when(granted) {
         when(hasException(entry)) { // Exception ?
           gotoExceptionHandler(entry)
+          retired(id) := true.B
+        }.elsewhen(hasInterrupt(entry)) {
+          gotoInterruptHandler(entry)
         }.elsewhen(hasXRet(entry)) { // XRet ?
           gotoXRetPath(entry)
+          retired(id) := true.B
         }.elsewhen(hasCSR(entry)) { // CSR ?
           writeCSRs(id)
           updateRegister(id)
           gotoCSRPath(entry)
+          retired(id) := true.B
         }.elsewhen(hasBranch(entry)) { // Branch ?
           updateRegister(id)
           gotoRecoveryPath(entry)
+          retired(id) := true.B
         }.elsewhen(hasFlush(entry)) { // Flush ?
           gotoFlushPath(id)
+          retired(id) := true.B
         }.otherwise {
           when(entry.valid) {
             updateRegister(id)
             updateLoadReservation(id)
             retireStoreQueue(id)
+            retired(id) := true.B
           }
           grant(id) := true.B
 

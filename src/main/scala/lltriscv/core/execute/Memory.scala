@@ -7,6 +7,7 @@ import lltriscv.core._
 import lltriscv.core.decode.InstructionType
 import lltriscv.core.record.TLBRequestIO
 import lltriscv.core.record.StoreQueueAllocIO
+import lltriscv.core.record.ExceptionCode
 
 import lltriscv.bus.SMAReaderIO
 import lltriscv.bus.SMAWriterIO
@@ -190,8 +191,8 @@ class MemoryExecuteStage extends Module {
   // Misaligned address check
   io.out.bits.error := MemoryErrorCode.none
   when(
-    ((inReg.op in (MemoryOperationType.lw)) && vaddress(1, 0) =/= 0.U) || // Word 4bytes
-      ((inReg.op in (MemoryOperationType.lh, MemoryOperationType.lhu)) && vaddress(0) =/= 0.U) // Half 2bytes
+    ((inReg.op in MemoryOperationType.wordValues) && vaddress(1, 0) =/= 0.U) || // Word 4bytes
+      ((inReg.op in MemoryOperationType.halfValues) && vaddress(0) =/= 0.U) // Half 2bytes
   ) {
     io.out.bits.error := MemoryErrorCode.misaligned
   }
@@ -447,38 +448,38 @@ class MemoryReadWriteStage extends Module {
 
   // Exception
   when((inReg.op in MemoryOperationType.readValues) && readError) {
-    io.out.bits.triggerException(ExceptionCode.loadAccessFault)
+    io.out.bits.triggerException(ExceptionCode.loadAccessFault.U)
   }
 
   // Last error
   switch(inReg.error) {
     is(MemoryErrorCode.misaligned) {
       when(inReg.op in MemoryOperationType.writeValues) {
-        io.out.bits.triggerException(ExceptionCode.storeAMOAddressMisaligned)
+        io.out.bits.triggerException(ExceptionCode.storeAMOAddressMisaligned.U)
       }.elsewhen(inReg.op in MemoryOperationType.readValues) {
-        io.out.bits.triggerException(ExceptionCode.loadAddressMisaligned)
+        io.out.bits.triggerException(ExceptionCode.loadAddressMisaligned.U)
       }
     }
 
     is(MemoryErrorCode.pageFault) {
       when(inReg.op in MemoryOperationType.writeValues) {
-        io.out.bits.triggerException(ExceptionCode.storeAMOPageFault)
+        io.out.bits.triggerException(ExceptionCode.storeAMOPageFault.U)
       }.elsewhen(inReg.op in MemoryOperationType.readValues) {
-        io.out.bits.triggerException(ExceptionCode.loadPageFault)
+        io.out.bits.triggerException(ExceptionCode.loadPageFault.U)
       }
     }
 
     is(MemoryErrorCode.memoryFault) {
       when(inReg.op in MemoryOperationType.writeValues) {
-        io.out.bits.triggerException(ExceptionCode.storeAMOAccessFault)
+        io.out.bits.triggerException(ExceptionCode.storeAMOAccessFault.U)
       }.elsewhen(inReg.op in MemoryOperationType.readValues) {
-        io.out.bits.triggerException(ExceptionCode.loadAccessFault)
+        io.out.bits.triggerException(ExceptionCode.loadAccessFault.U)
       }
     }
   }
 
   when(inReg.op === MemoryOperationType.undefined) {
-    io.out.bits.triggerException(ExceptionCode.illegalInstruction)
+    io.out.bits.triggerException(ExceptionCode.illegalInstruction.U)
   }
 
   // rd & pc & valid

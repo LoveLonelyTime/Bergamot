@@ -13,29 +13,6 @@ import lltriscv.core.decode.InstructionType
  * Copyright (C) 2024-2025 LoveLonelyTime
  */
 
-/** Instruction exception code
-  *
-  * RISC-V instruction exception code
-  */
-object ExceptionCode {
-  val instructionAddressMisaligned = 0.U
-  val instructionAccessFault = 1.U
-  val illegalInstruction = 2.U
-  val breakpoint = 3.U
-  val loadAddressMisaligned = 4.U
-  val loadAccessFault = 5.U
-  val storeAMOAddressMisaligned = 6.U
-  val storeAMOAccessFault = 7.U
-  val environmentCallFromUMode = 8.U
-  val environmentCallFromSMode = 9.U
-  // 10 Reserved
-  val environmentCallFromMMode = 11.U
-  val instructionPageFault = 12.U
-  val loadPageFault = 13.U
-  // 14 Reserved
-  val storeAMOPageFault = 15.U
-}
-
 /** Execute queue type
   */
 object ExecuteQueueType extends ChiselEnum {

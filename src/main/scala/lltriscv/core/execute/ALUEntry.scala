@@ -58,7 +58,7 @@ object ALUOperationType extends ChiselEnum {
    * - div, divu: Division
    * - rem, remu: Modulus
    */
-  val none, undefined, add, sub, and, or, xor, sll, srl, sra, slt, sltu, csrrw, csrrs, csrrc, env, ebreak, mret, sret, fence, fencei, sfenceVMA, mul, mulh, mulhsu, mulhu, div, divu, rem, remu = Value
+  val undefined, none, add, sub, and, or, xor, sll, srl, sra, slt, sltu, csrrw, csrrs, csrrc, env, ebreak, mret, sret, fence, fencei, sfenceVMA, mul, mulh, mulhsu, mulhu, div, divu, rem, remu = Value
 }
 
 /** ALU execute stage entry

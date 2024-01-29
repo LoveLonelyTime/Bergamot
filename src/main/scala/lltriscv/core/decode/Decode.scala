@@ -151,6 +151,9 @@ class DecodeStage extends Module {
         instructionType := InstructionType.R
       }
     }
+    when(in.instruction(1, 0) =/= "b11".U) { // Identification code detection
+      instructionType := InstructionType.UK
+    }
     out.instructionType := instructionType
 
     // rs1Tozimm (csrrwi, csrrsi, csrrci)
