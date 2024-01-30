@@ -63,6 +63,7 @@ class ExecuteResultEntry extends Bundle {
   // Exception field
   val exception = Bool()
   val exceptionCode = DataType.exceptionCode
+  val exceptionVal = DataType.operation
 
   // Write memory field
   val write = Bool()
@@ -73,8 +74,9 @@ class ExecuteResultEntry extends Bundle {
   val csrAddress = DataType.csr
   val csrData = DataType.operation
 
-  // XReturn field
-  val xret = Bool()
+  // Privilege return field
+  val mret = Bool()
+  val sret = Bool()
 
   // Fence field
   val flushDCache = Bool()
@@ -97,9 +99,12 @@ class ExecuteResultEntry extends Bundle {
   val valid = Bool() // Validity
 
   // Helper functions
-  def triggerException(code: UInt) = {
+  def triggerException(code: UInt): Unit = triggerException(code, 0.U)
+
+  def triggerException(code: UInt, value: UInt): Unit = {
     exception := true.B
     exceptionCode := code
+    exceptionVal := value
   }
 
   def resultCSR(addr: UInt, wdata: UInt) = {

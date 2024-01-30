@@ -379,7 +379,6 @@ class MemoryReadWriteStage extends Module {
   io.alloc <> new StoreQueueAllocIO().zero
   when(statusReg === Status.write) {
     io.alloc.valid := true.B
-
     // AMO
     val writeData = WireInit(inReg.op1)
     val gtu = WireInit(inReg.op1 > readResult)
@@ -448,32 +447,32 @@ class MemoryReadWriteStage extends Module {
 
   // Exception
   when((inReg.op in MemoryOperationType.readValues) && readError) {
-    io.out.bits.triggerException(ExceptionCode.loadAccessFault.U)
+    io.out.bits.triggerException(ExceptionCode.loadAccessFault.U, inReg.vaddress)
   }
 
   // Last error
   switch(inReg.error) {
     is(MemoryErrorCode.misaligned) {
       when(inReg.op in MemoryOperationType.writeValues) {
-        io.out.bits.triggerException(ExceptionCode.storeAMOAddressMisaligned.U)
+        io.out.bits.triggerException(ExceptionCode.storeAMOAddressMisaligned.U, inReg.vaddress)
       }.elsewhen(inReg.op in MemoryOperationType.readValues) {
-        io.out.bits.triggerException(ExceptionCode.loadAddressMisaligned.U)
+        io.out.bits.triggerException(ExceptionCode.loadAddressMisaligned.U, inReg.vaddress)
       }
     }
 
     is(MemoryErrorCode.pageFault) {
       when(inReg.op in MemoryOperationType.writeValues) {
-        io.out.bits.triggerException(ExceptionCode.storeAMOPageFault.U)
+        io.out.bits.triggerException(ExceptionCode.storeAMOPageFault.U, inReg.vaddress)
       }.elsewhen(inReg.op in MemoryOperationType.readValues) {
-        io.out.bits.triggerException(ExceptionCode.loadPageFault.U)
+        io.out.bits.triggerException(ExceptionCode.loadPageFault.U, inReg.vaddress)
       }
     }
 
     is(MemoryErrorCode.memoryFault) {
       when(inReg.op in MemoryOperationType.writeValues) {
-        io.out.bits.triggerException(ExceptionCode.storeAMOAccessFault.U)
+        io.out.bits.triggerException(ExceptionCode.storeAMOAccessFault.U, inReg.vaddress)
       }.elsewhen(inReg.op in MemoryOperationType.readValues) {
-        io.out.bits.triggerException(ExceptionCode.loadAccessFault.U)
+        io.out.bits.triggerException(ExceptionCode.loadAccessFault.U, inReg.vaddress)
       }
     }
   }

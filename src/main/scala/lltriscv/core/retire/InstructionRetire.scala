@@ -109,7 +109,7 @@ class InstructionRetire(depth: Int) extends Module {
   private def hasCSR(entry: ROBTableEntry) =
     entry.valid && entry.executeResult.writeCSR
   private def hasXRet(entry: ROBTableEntry) =
-    entry.valid && entry.executeResult.xret
+    entry.valid && (entry.executeResult.mret || entry.executeResult.sret)
   private def hasFlush(entry: ROBTableEntry) =
     entry.valid && (entry.executeResult.flushDCache ||
       entry.executeResult.flushL2DCache ||
@@ -121,12 +121,12 @@ class InstructionRetire(depth: Int) extends Module {
     io.recover := true.B
     io.trap.exceptionTrigger := true.B
     io.trap.trapPC := entry.pc
-    io.trap.trapVal := 0.U // TODO
+    io.trap.trapVal := entry.executeResult.exceptionVal
     io.trap.trapCode := entry.executeResult.exceptionCode
     io.correctPC := io.trap.handlerPC
 
     io.retired.ready := true.B
-    printf("Exception!!!! pc = %d\n", entry.pc)
+    printf("Exception!!!! pc = %d, cause = %d,to = %d\n", entry.pc, entry.executeResult.exceptionCode, io.trap.handlerPC)
   }
 
   private def gotoInterruptHandler(entry: ROBTableEntry) = {
@@ -154,7 +154,12 @@ class InstructionRetire(depth: Int) extends Module {
   }
 
   private def gotoXRetPath(entry: ROBTableEntry) = {
-    io.trap.xret := true.B
+    when(entry.executeResult.mret) {
+      io.trap.mret := true.B
+    }.elsewhen(entry.executeResult.sret) {
+      io.trap.sret := true.B
+    }
+
     io.recover := true.B
     io.correctPC := io.trap.handlerPC
 

@@ -115,7 +115,8 @@ class CSRsReadIO extends Bundle {
 /** Trap request interface
   */
 class TrapRequestIO extends Bundle {
-  val xret = Output(Bool()) // Privilege return
+  val mret = Output(Bool()) // M-Level privilege return
+  val sret = Output(Bool()) // S-Level privilege return
   val exceptionTrigger = Output(Bool()) // Exception trigger
   val interruptTrigger = Output(Bool()) // Interrupt trigger
   val interruptPending = Input(Bool()) // Interrupt pending flag

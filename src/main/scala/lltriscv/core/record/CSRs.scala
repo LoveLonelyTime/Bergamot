@@ -193,17 +193,12 @@ class CSRs extends Module {
   }
 
   // xret
-  when(io.trap.xret) {
-    switch(statusReg.privilege) {
-      is(PrivilegeType.M) { // mret
-        io.trap.handlerPC := exceptionReg.mepc.value
-        statusReg.returnFromMLevel()
-      }
-      is(PrivilegeType.S) { // sret
-        io.trap.handlerPC := exceptionReg.sepc.value
-        statusReg.returnFromSLevel()
-      }
-    }
+  when(io.trap.mret) { // mret
+    io.trap.handlerPC := exceptionReg.mepc.value
+    statusReg.returnFromMLevel()
+  }.elsewhen(io.trap.sret) { // sret
+    io.trap.handlerPC := exceptionReg.sepc.value
+    statusReg.returnFromSLevel()
   }
 
   // Exception

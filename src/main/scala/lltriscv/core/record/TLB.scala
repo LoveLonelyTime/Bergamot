@@ -77,6 +77,7 @@ class TLB(depth: Int, data: Boolean) extends Module {
     *   Inherited global field
     */
   private def alloc(pte: UInt, mPage: Bool, global: Bool) = {
+    // printf("TLB save: %d\n", pte)
     incrVictim := true.B
     val victim = table(victimPtr)
     victim.vpn := io.request.vaddress(31, 12)
@@ -93,15 +94,19 @@ class TLB(depth: Int, data: Boolean) extends Module {
   io.flush.empty := !VecInit(table.map(_.valid)).reduceTree(_ || _)
 
   // Actual paging privilege level (MPRV)
-  private val pagePrivilege = Mux(
-    io.privilege === PrivilegeType.M,
-    Mux(
-      io.mstatus(17), // MPRV
-      PrivilegeType.mcode(io.mstatus(12, 11)), // MPP
-      PrivilegeType.M
-    ),
-    io.privilege
-  )
+  // Instruction address-translation and protection are unaffected by the setting of MPRV
+  private val pagePrivilege =
+    if (data)
+      Mux(
+        io.privilege === PrivilegeType.M,
+        Mux(
+          io.mstatus(17), // MPRV
+          PrivilegeType.mcode(io.mstatus(12, 11)), // MPP
+          PrivilegeType.M
+        ),
+        io.privilege
+      )
+    else io.privilege
 
   private def alignmentCheck(entry: TLBEntry) = {
     !entry.mPage || entry.ppn(10, 0) === 0.U
@@ -173,6 +178,7 @@ class TLB(depth: Int, data: Boolean) extends Module {
 
       grant.zip(table).foreach { case (granted, entry) =>
         when(granted) {
+          printf("TLB Hit: vaddr= %d, paddr= %d, da= %d, uxwr = %d\n", io.request.vaddress, io.request.paddress, entry.da, entry.uxwr)
           when(entry.v && pteDACheck(entry.da) && ptePrivilegeCheck(entry.uxwr) && alignmentCheck(entry)) {
             // 34 -> 32
             io.request.paddress := Mux(
@@ -180,6 +186,7 @@ class TLB(depth: Int, data: Boolean) extends Module {
               entry.ppn(21, 10) ## Sv32.getMOffset(io.request.vaddress), // 4MiB page
               entry.ppn ## Sv32.getOffset(io.request.vaddress) // 4KiB page
             )
+
           }.otherwise { // Fault
             io.request.error := MemoryErrorCode.pageFault
           }
@@ -204,6 +211,7 @@ class TLB(depth: Int, data: Boolean) extends Module {
     io.sma.valid := true.B
     when(io.sma.ready) { // Finished
       when(!io.sma.error) {
+        printf("Walk vpn1: addr = %d, pte = %d\n", io.sma.address, io.sma.data)
         val pte = io.sma.data
         vpn1Reg := pte // Save
         when(pte(4, 2) === "b000".U) { // Next
@@ -234,6 +242,7 @@ class TLB(depth: Int, data: Boolean) extends Module {
     when(io.sma.ready) { // Finished
       val pte = io.sma.data
       when(!io.sma.error) { // Leaf
+        printf("Walk vpn0: addr = %d, pte = %d\n", io.sma.address, io.sma.data)
         alloc(pte, false.B, vpn1Reg(5))
         statusReg := Status.lookup // Return
       }.otherwise { // Memory error

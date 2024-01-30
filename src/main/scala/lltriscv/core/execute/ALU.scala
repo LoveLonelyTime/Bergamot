@@ -348,8 +348,8 @@ class ALUExecuteStage extends Module {
     }
 
     is(ALUOperationType.sret) {
-      when(io.privilege === PrivilegeType.S && !io.mstatus(22)) { // TSR OK
-        io.out.bits.xret := true.B
+      when((io.privilege === PrivilegeType.S && !io.mstatus(22)) || io.privilege === PrivilegeType.M) { // TSR OK
+        io.out.bits.sret := true.B
       }.otherwise { // Unauthorized access
         io.out.bits.triggerException(ExceptionCode.illegalInstruction.U)
       }
@@ -357,7 +357,7 @@ class ALUExecuteStage extends Module {
 
     is(ALUOperationType.mret) {
       when(io.privilege === PrivilegeType.M) { // OK
-        io.out.bits.xret := true.B
+        io.out.bits.mret := true.B
       }.otherwise { // Unauthorized access
         io.out.bits.triggerException(ExceptionCode.illegalInstruction.U)
       }
@@ -378,12 +378,12 @@ class ALUExecuteStage extends Module {
     }
 
     is(ALUOperationType.sfenceVMA) {
-      when(io.privilege =/= PrivilegeType.S || io.mstatus(20)) { // TVM
-        io.out.bits.triggerException(ExceptionCode.illegalInstruction.U)
-      }.otherwise {
+      when((io.privilege === PrivilegeType.S && !io.mstatus(20)) || io.privilege === PrivilegeType.M) { // TVM
         // Visible to TLB
         io.out.bits.flushDCache := true.B
         io.out.bits.invalidTLB := true.B
+      }.otherwise {
+        io.out.bits.triggerException(ExceptionCode.illegalInstruction.U)
       }
     }
 
@@ -399,9 +399,9 @@ class ALUExecuteStage extends Module {
 
   // Instruction cache line error
   when(inReg.error === MemoryErrorCode.memoryFault) {
-    io.out.bits.triggerException(ExceptionCode.instructionAccessFault.U)
+    io.out.bits.triggerException(ExceptionCode.instructionAccessFault.U, inReg.pc)
   }.elsewhen(inReg.error === MemoryErrorCode.pageFault) {
-    io.out.bits.triggerException(ExceptionCode.instructionPageFault.U)
+    io.out.bits.triggerException(ExceptionCode.instructionPageFault.U, inReg.pc)
   }
 
   io.out.bits.rd := inReg.rd

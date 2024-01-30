@@ -27,24 +27,27 @@ import lltriscv.test.mock.MemoryMock
 
 class RV32PTest extends AnyFlatSpec with ChiselScalatestTester {
   private val testAnnotations = Seq(WriteVcdAnnotation, VerilatorBackendAnnotation)
-  private val loadAddress = 0x0
-  private val entryAddress = 0x1000
-  private val hostAddress = 0x0
+  private val loadAddress = 0x1000
+  private val entryAddress = 0x2000
+  private val hostAddress = 0x1000
   private val passTestNum = 0x1
-  private val timeout = 3000
-  private val memorySize = 4096 * 5
+  private val timeout = 100000
+  private val memorySize = 1024 * 1024 * 4
 
   private val config = CoreConfig.default.copy(pcInit = entryAddress)
 
   // Collect tests
-  private val miTests = new File("riscv-tests/isa").listFiles().filter(_.getName().matches(raw"rv32mi-p-.*\.bin"))
+  private val mipTests = new File("riscv-tests/isa").listFiles().filter(_.getName().matches(raw"rv32mi-p-.*\.bin"))
+  private val sipTests = new File("riscv-tests/isa").listFiles().filter(_.getName().matches(raw"rv32si-p-.*\.bin"))
 
-  private val uiTests = new File("riscv-tests/isa").listFiles().filter(_.getName().matches(raw"rv32ui-p-srl\.bin"))
-  private val ucTests = new File("riscv-tests/isa").listFiles().filter(_.getName().matches(raw"rv32uc-p-.*\.bin"))
-  private val uaTests = new File("riscv-tests/isa").listFiles().filter(_.getName().matches(raw"rv32ua-p-.*\.bin"))
-  private val umTests = new File("riscv-tests/isa").listFiles().filter(_.getName().matches(raw"rv32um-p-.*\.bin"))
-  // ++ uaTests ++ umTests
-  private val needToTest = uiTests
+  private val uipTests = new File("riscv-tests/isa").listFiles().filter(_.getName().matches(raw"rv32ui-p-.*\.bin"))
+  private val ucpTests = new File("riscv-tests/isa").listFiles().filter(_.getName().matches(raw"rv32uc-p-.*\.bin"))
+  private val uapTests = new File("riscv-tests/isa").listFiles().filter(_.getName().matches(raw"rv32ua-p-.*\.bin"))
+  private val umpTests = new File("riscv-tests/isa").listFiles().filter(_.getName().matches(raw"rv32um-p-.*\.bin"))
+
+  private val uivTests = new File("riscv-tests/isa").listFiles().filter(_.getName().matches(raw"rv32ui-v-add\.bin"))
+
+  private val needToTest = uivTests
 
   private def expectPass(memory: MemoryMock) = {
     assert(memory.loadInt(hostAddress) == passTestNum)
@@ -53,6 +56,7 @@ class RV32PTest extends AnyFlatSpec with ChiselScalatestTester {
   for (bin <- needToTest) {
     s"$bin" should "pass" in {
       test(new LLTRISCVCoreExq(config)).withAnnotations(testAnnotations) { dut =>
+        dut.clock.setTimeout(0)
         val memory = new FlatMemoryMock(memorySize) with MemoryFileMock with SMAMemoryMock
         memory.importBin(bin, loadAddress)
         for (i <- 0 until timeout) {

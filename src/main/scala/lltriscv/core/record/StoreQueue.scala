@@ -56,7 +56,7 @@ class StoreQueue(depth: Int) extends Module {
   private val emptyReg = RegInit(true.B)
   private val fullReg = RegInit(false.B)
 
-  io.alloc.ready := !fullReg
+  io.alloc.ready := !fullReg && !io.recover
   io.alloc.id := writePtr
 
   // In ordered arbitration logic

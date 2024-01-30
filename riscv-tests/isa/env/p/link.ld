@@ -3,7 +3,7 @@ ENTRY(_start)
 
 SECTIONS
 {
-  . = 0x00000000;
+  . = 0x00001000;
   .tohost : { *(.tohost) }
   . = ALIGN(0x1000);
   .text.init : { *(.text.init) }
