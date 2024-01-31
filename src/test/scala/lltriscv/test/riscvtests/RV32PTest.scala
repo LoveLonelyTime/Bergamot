@@ -45,7 +45,7 @@ class RV32PTest extends AnyFlatSpec with ChiselScalatestTester {
   private val uapTests = new File("riscv-tests/isa").listFiles().filter(_.getName().matches(raw"rv32ua-p-.*\.bin"))
   private val umpTests = new File("riscv-tests/isa").listFiles().filter(_.getName().matches(raw"rv32um-p-.*\.bin"))
 
-  private val uivTests = new File("riscv-tests/isa").listFiles().filter(_.getName().matches(raw"rv32ui-v-add\.bin"))
+  private val uivTests = new File("riscv-tests/isa").listFiles().filter(_.getName().matches(raw"rv32ui-v-.*\.bin"))
 
   private val needToTest = uivTests
 

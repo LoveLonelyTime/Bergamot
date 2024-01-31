@@ -27,7 +27,7 @@ class FlushCacheIO extends Bundle {
   * @param cacheLineDepth
   *   Size(bits) = 16 * Cache line depth
   */
-class ICacheLineRequestIO(cacheLineDepth: Int) extends Bundle {
+class CacheLineRequestIO(cacheLineDepth: Int) extends Bundle {
   val address = Output(DataType.address) // Aligned cache line address
   val data = Input(Vec(cacheLineDepth, UInt(16.W))) // Group data
   val error = Input(Bool()) // Memory error

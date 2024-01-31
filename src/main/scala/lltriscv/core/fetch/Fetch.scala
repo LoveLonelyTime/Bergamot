@@ -8,7 +8,7 @@ import lltriscv.core.decode.DecodeStageEntry
 import lltriscv.core.record.TLBRequestIO
 import lltriscv.core.execute.MemoryErrorCode
 
-import lltriscv.cache.ICacheLineRequestIO
+import lltriscv.cache.CacheLineRequestIO
 
 import lltriscv.utils.CoreUtils._
 import lltriscv.utils.ChiselUtils._
@@ -38,7 +38,7 @@ import lltriscv.utils.Sv32
 class Fetch(cacheLineDepth: Int, queueDepth: Int, predictorDepth: Int, pcInit: Int) extends Module {
   val io = IO(new Bundle {
     val itlb = new TLBRequestIO()
-    val icache = new ICacheLineRequestIO(cacheLineDepth)
+    val icache = new CacheLineRequestIO(cacheLineDepth)
     val out = DecoupledIO(Vec2(new DecodeStageEntry()))
     // Address space ID
     val asid = Input(DataType.asid)
@@ -99,7 +99,7 @@ class InstructionFetcher(cacheLineDepth: Int) extends Module {
     // Instruction TLB request interface
     val itlb = new TLBRequestIO()
     // Instruction cache request interface
-    val icache = new ICacheLineRequestIO(cacheLineDepth)
+    val icache = new CacheLineRequestIO(cacheLineDepth)
     val recover = Input(Bool())
   })
 
@@ -205,7 +205,7 @@ class InstructionFetcher(cacheLineDepth: Int) extends Module {
   private val iCacheVictim = RegInit(0.U)
   private val iCacheTaskFlag = RegInit(false.B)
 
-  io.icache <> new ICacheLineRequestIO(cacheLineDepth).zero
+  io.icache <> new CacheLineRequestIO(cacheLineDepth).zero
 
   switch(iCacheStatusReg) {
     is(Status.idle) {
