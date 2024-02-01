@@ -22,31 +22,7 @@ import lltriscv.utils.ChiselUtils
  */
 
 class ExportCoreTest extends AnyFreeSpec with ChiselScalatestTester {
-  class TestCore extends Module {
-    val io = IO(new Bundle {
-      val readone = Input(UInt(4.W))
-      val writeone = Output(Bool())
-
-      val readReady = Input(Bool())
-      val writeReady = Input(Bool())
-      val readValid = Output(Bool())
-      val writeValid = Output(Bool())
-    })
-    private val core = Module(new LLTRISCVCoreExq(CoreConfig.default))
-    core.io.smaReader.ready := io.readReady
-    core.io.smaReader.error := false.B
-    core.io.smaReader.data := Fill(8, io.readone)
-
-    io.readValid := core.io.smaReader.valid
-
-    core.io.smaWriter.ready := io.writeReady
-    core.io.smaWriter.error := false.B
-    io.writeone := core.io.smaWriter.data.xorR
-
-    io.writeValid := core.io.smaWriter.valid
-  }
-
   "Export core" in {
-    emitVerilog(new TestCore(), Array("--target-dir", "generated"))
+    emitVerilog(new LLTRISCVCoreExq(CoreConfig.default), Array("--target-dir", "generated"))
   }
 }

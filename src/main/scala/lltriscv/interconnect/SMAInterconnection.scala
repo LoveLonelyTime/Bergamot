@@ -2,12 +2,15 @@ package lltriscv.interconnect
 
 import chisel3._
 import chisel3.util._
-import lltriscv.utils.CoreUtils
-import lltriscv.utils.ChiselUtils._
-import lltriscv.bus.SMAReaderIO
+
 import lltriscv.core.record.StoreQueueBypassIO
 import lltriscv.core.execute.MemoryAccessLength
 import lltriscv.core.DataType
+
+import lltriscv.bus.SMAReaderIO
+
+import lltriscv.utils.CoreUtils._
+import lltriscv.utils.ChiselUtils._
 
 /*
  * SMA interconnect

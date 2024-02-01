@@ -5,7 +5,6 @@ import chisel3.util._
 import lltriscv.core.fetch.Fetch
 import lltriscv.core.decode.Decode
 import lltriscv.core.record.TLB
-import lltriscv.cache.TrivialICache
 import lltriscv.core.record.RegisterMappingTable
 import lltriscv.core.broadcast.DataBroadcastIO
 import lltriscv.core.execute.ExecuteQueueEnqueueIO
@@ -21,7 +20,6 @@ import lltriscv.core.execute.Branch
 import lltriscv.core.execute.Memory
 import lltriscv.core.execute.ALU
 import lltriscv.core.record.CSRsReadIO
-import lltriscv.cache.TrivialDCache
 import lltriscv.cache.Serial2Flusher
 import lltriscv.bus.SMAWriterIO
 import lltriscv.core.record.StoreQueue
@@ -38,6 +36,16 @@ import lltriscv.cache.Parallel2Flusher
 import lltriscv.core.execute.OutOfOrderedExecuteQueue
 import lltriscv.core.fetch.BranchPredictorUpdateIO
 import lltriscv.core.execute.LoadReservationUpdateIO
+import lltriscv.cache.SetCache
+import lltriscv.cache.SMA2CacheLineRequest
+
+import lltriscv.utils.ChiselUtils._
+import lltriscv.utils.CoreUtils._
+import lltriscv.interconnect.CacheLineRequest2Interconnect
+import lltriscv.cache.CacheLineRequestIO
+import lltriscv.bus.AXIMaster
+import lltriscv.cache.CacheLineRequest2SMA
+import lltriscv.bus.AXIMasterIO
 
 /*
  * LLT RISC-V Core Exquisite integration
@@ -48,7 +56,7 @@ import lltriscv.core.execute.LoadReservationUpdateIO
 /** Core config class
   *
   * @param iTLBDepth
-  * @param iCacheLineDepth
+  * @param cacheLineDepth
   * @param fetchQueueDepth
   * @param executeQueueWidth
   * @param executeQueueDepth
@@ -58,7 +66,7 @@ import lltriscv.core.execute.LoadReservationUpdateIO
   * @param predictorDepth
   * @param pcInit
   */
-case class CoreConfig(val iTLBDepth: Int, val iCacheLineDepth: Int, val fetchQueueDepth: Int, val executeQueueWidth: Int, val executeQueueDepth: Int, val dTLBDepth: Int, val storeQueueDepth: Int, val robDepth: Int, val predictorDepth: Int, pcInit: Int)
+case class CoreConfig(iTLBDepth: Int, cacheLineDepth: Int, fetchQueueDepth: Int, executeQueueWidth: Int, executeQueueDepth: Int, dTLBDepth: Int, storeQueueDepth: Int, robDepth: Int, predictorDepth: Int, pcInit: Int, l1CacheDepth: Int, l1CacheWay: Int, l2CacheDepth: Int, l2CacheWay: Int)
 
 object CoreConfig {
 
@@ -66,7 +74,7 @@ object CoreConfig {
     */
   val default = CoreConfig(
     iTLBDepth = 8,
-    iCacheLineDepth = 8,
+    cacheLineDepth = 8,
     fetchQueueDepth = 8,
     executeQueueWidth = 3,
     executeQueueDepth = 8,
@@ -74,7 +82,11 @@ object CoreConfig {
     storeQueueDepth = 8,
     robDepth = 8,
     predictorDepth = 8,
-    pcInit = 0x0
+    pcInit = 0x0,
+    l1CacheDepth = 1024,
+    l1CacheWay = 2,
+    l2CacheDepth = 4096,
+    l2CacheWay = 4
   )
 }
 
@@ -85,19 +97,23 @@ object CoreConfig {
   */
 class LLTRISCVCoreExq(config: CoreConfig) extends Module {
   val io = IO(new Bundle {
-    val smaReader = new SMAReaderIO()
-    val smaWriter = new SMAWriterIO()
+    val axi = new AXIMasterIO()
   })
 
   private val coreFrontend = Module(new CoreFrontend(config))
   private val coreExecute = Module(new CoreExecute(config))
   private val coreBackend = Module(new CoreBackend(config))
 
-  private val reader2Interconnect = Module(new SMA2ReaderInterconnect())
   private val tlbFlusher = Module(new Parallel2Flusher())
 
+  private val cacheLineRequest2Interconnect = Module(new CacheLineRequest2Interconnect(config.cacheLineDepth))
+
+  private val l2Cache = Module(new SetCache(config.l2CacheDepth, config.l2CacheWay, config.cacheLineDepth))
+
+  private val axiMaster = Module(new AXIMaster())
+  private val cacheLineRequest2SMA = Module(new CacheLineRequest2SMA(config.cacheLineDepth))
   // CoreFrontend
-  coreFrontend.io.sma <> reader2Interconnect.io.in1
+  coreFrontend.io.cacheLineRequest <> cacheLineRequest2Interconnect.io.in1
   coreFrontend.io.broadcast <> coreBackend.io.broadcast
   coreFrontend.io.alloc <> coreBackend.io.alloc
   coreFrontend.io.tableWrite <> coreBackend.io.tableWrite
@@ -111,8 +127,8 @@ class LLTRISCVCoreExq(config: CoreConfig) extends Module {
   coreExecute.io.enqs <> coreFrontend.io.enqs
   coreExecute.io.csr <> coreBackend.io.read
   coreExecute.io.broadcast <> coreBackend.io.broadcast
-  coreExecute.io.smaReader <> reader2Interconnect.io.in2
-  coreExecute.io.smaWriter <> io.smaWriter
+  coreExecute.io.cacheLineRequest <> cacheLineRequest2Interconnect.io.in2
+  coreExecute.io.smaWriter <> l2Cache.io.inWriter
   coreExecute.io.privilege := coreBackend.io.privilege
   coreExecute.io.mstatus := coreBackend.io.mstatus
   coreExecute.io.satp := coreBackend.io.satp
@@ -122,7 +138,6 @@ class LLTRISCVCoreExq(config: CoreConfig) extends Module {
   coreBackend.io.deqs <> coreExecute.io.deqs
   coreBackend.io.dCacheFlush <> coreExecute.io.dCacheFlush
   coreBackend.io.iCacheFlush <> coreFrontend.io.iCacheFlush
-  coreBackend.io.iCacheFlush.empty := true.B
   coreBackend.io.tlbFlush <> tlbFlusher.io.in
   coreBackend.io.update <> coreFrontend.io.update
   coreBackend.io.updateLoadReservation <> coreExecute.io.updateLoadReservation
@@ -133,8 +148,15 @@ class LLTRISCVCoreExq(config: CoreConfig) extends Module {
   tlbFlusher.io.out1 <> coreFrontend.io.iTLBFlush
   tlbFlusher.io.out2 <> coreExecute.io.dTLBFlush
 
-  // Reader2Interconnect
-  reader2Interconnect.io.out <> io.smaReader
+  // L2 Cache
+  l2Cache.io.inReader <> cacheLineRequest2Interconnect.io.out
+  l2Cache.io.outReader <> cacheLineRequest2SMA.io.request
+  cacheLineRequest2SMA.io.smaReader <> axiMaster.io.smaReader
+  l2Cache.io.outWriter <> axiMaster.io.smaWriter
+  l2Cache.io.flush.req := false.B
+
+  // AXIMaster
+  axiMaster.io.axi <> io.axi
 }
 
 /** Core frontend
@@ -146,7 +168,7 @@ class LLTRISCVCoreExq(config: CoreConfig) extends Module {
   */
 class CoreFrontend(config: CoreConfig) extends Module {
   val io = IO(new Bundle {
-    val sma = new SMAReaderIO()
+    val cacheLineRequest = new CacheLineRequestIO(config.cacheLineDepth)
     val broadcast = Flipped(new DataBroadcastIO())
     val enqs = Vec(config.executeQueueWidth, new ExecuteQueueEnqueueIO())
 
@@ -167,29 +189,34 @@ class CoreFrontend(config: CoreConfig) extends Module {
   })
 
   private val itlb = Module(new TLB(config.iTLBDepth, false))
-  private val iCache = Module(new TrivialICache(config.iCacheLineDepth))
-  private val fetch = Module(new Fetch(config.iCacheLineDepth, config.fetchQueueDepth, config.predictorDepth, config.pcInit))
+  private val iCache = Module(new SetCache(config.l1CacheDepth, config.l1CacheWay, config.cacheLineDepth))
+  private val fetch = Module(new Fetch(config.cacheLineDepth, config.fetchQueueDepth, config.predictorDepth, config.pcInit))
   private val decode = Module(new Decode(config.executeQueueWidth))
   private val registerMappingTable = Module(new RegisterMappingTable())
 
-  private val reader2Interconnect = Module(new SMA2ReaderInterconnect())
+  private val sma2CacheLineRequest = Module(new SMA2CacheLineRequest(config.cacheLineDepth))
+  private val cacheLineRequest2Interconnect = Module(new CacheLineRequest2Interconnect(config.cacheLineDepth))
 
   // ITLB
-  itlb.io.sma <> reader2Interconnect.io.in1
+  itlb.io.sma <> sma2CacheLineRequest.io.smaReader
+  sma2CacheLineRequest.io.request <> cacheLineRequest2Interconnect.io.in1
   itlb.io.privilege := io.privilege
   itlb.io.satp := io.satp
   itlb.io.mstatus := io.mstatus
   itlb.io.flush <> io.iTLBFlush
 
   // ICache
-  iCache.io.downReader <> reader2Interconnect.io.in2
+  // Disable ICache write interface
+  iCache.io.inWriter <> new SMAWriterIO().zero
+  iCache.io.outWriter <> new SMAWriterIO().zero
+  iCache.io.outReader <> cacheLineRequest2Interconnect.io.in2
   iCache.io.flush <> io.iCacheFlush
 
   // Fetch
   fetch.io.asid := io.satp(30, 22)
   fetch.io.update <> io.predictorUpdate
   fetch.io.itlb <> itlb.io.request
-  fetch.io.icache <> iCache.io.request
+  fetch.io.icache <> iCache.io.inReader
   fetch.io.recover := io.recover
   fetch.io.correctPC := io.correctPC
   fetch.io.out <> decode.io.in
@@ -207,8 +234,8 @@ class CoreFrontend(config: CoreConfig) extends Module {
   registerMappingTable.io.update <> io.update
   registerMappingTable.io.recover <> io.recover
 
-  // Reader2Interconnect
-  reader2Interconnect.io.out <> io.sma
+  // CacheLineRequest2Interconnect
+  cacheLineRequest2Interconnect.io.out <> io.cacheLineRequest
 }
 
 /** Core execute
@@ -226,7 +253,7 @@ class CoreExecute(config: CoreConfig) extends Module {
     val csr = Flipped(new CSRsReadIO())
     val broadcast = Flipped(new DataBroadcastIO())
 
-    val smaReader = new SMAReaderIO()
+    val cacheLineRequest = new CacheLineRequestIO(config.cacheLineDepth)
     val smaWriter = new SMAWriterIO()
 
     val privilege = Input(PrivilegeType())
@@ -260,25 +287,29 @@ class CoreExecute(config: CoreConfig) extends Module {
   private val smaWithStoreQueueInterconnect = Module(new SMAWithStoreQueueInterconnect())
 
   private val dtlb = Module(new TLB(config.dTLBDepth, true))
-  private val dCache = Module(new TrivialDCache())
-  private val reader2Interconnect = Module(new SMA2ReaderInterconnect())
-  private val storeQueueAndDCacheFlusher = Module(new Serial2Flusher())
+  private val dCache = Module(new SetCache(config.l1CacheDepth, config.l1CacheWay, config.cacheLineDepth))
 
+  private val sma2CacheLineRequestTLB = Module(new SMA2CacheLineRequest(config.cacheLineDepth))
+  private val sma2CacheLineRequestStore = Module(new SMA2CacheLineRequest(config.cacheLineDepth))
+
+  private val cacheLineRequest2Interconnect = Module(new CacheLineRequest2Interconnect(config.cacheLineDepth))
   // Enqueue
   io.enqs(0) <> aluExecuteQueue.io.enqAndType
   io.enqs(1) <> branchExecuteQueue.io.enqAndType
   io.enqs(2) <> memoryExecuteQueue.io.enqAndType
 
   // DTLB
-  dtlb.io.sma <> reader2Interconnect.io.in1
+  dtlb.io.sma <> sma2CacheLineRequestTLB.io.smaReader
+  sma2CacheLineRequestTLB.io.request <> cacheLineRequest2Interconnect.io.in1
   dtlb.io.privilege := io.privilege
   dtlb.io.satp := io.satp
   dtlb.io.mstatus := io.mstatus
   dtlb.io.flush <> io.dTLBFlush
 
   // DCache
-  dCache.io.downReader <> io.smaReader
-  dCache.io.downWriter <> io.smaWriter
+  dCache.io.outWriter <> io.smaWriter
+  dCache.io.outReader <> cacheLineRequest2Interconnect.io.in2
+  dCache.io.flush.req := false.B
 
   // StoreQueue
   storeQueue.io.deq <> storeQueueMemoryWriter.io.deq
@@ -286,16 +317,15 @@ class CoreExecute(config: CoreConfig) extends Module {
   storeQueue.io.recover := io.recover
 
   // StoreQueueMemoryWriter
-  storeQueueMemoryWriter.io.sma <> dCache.io.upWriter
+  storeQueueMemoryWriter.io.sma <> dCache.io.inWriter
 
   // SMAWithStoreQueueInterconnect
   smaWithStoreQueueInterconnect.io.bypass <> storeQueue.io.bypass
-  smaWithStoreQueueInterconnect.io.out <> reader2Interconnect.io.in2
+  smaWithStoreQueueInterconnect.io.out <> sma2CacheLineRequestStore.io.smaReader
+  sma2CacheLineRequestStore.io.request <> dCache.io.inReader
 
-  // StoreQueueAndDCacheFlusher
-  storeQueueAndDCacheFlusher.io.out1 <> storeQueue.io.flush
-  storeQueueAndDCacheFlusher.io.out2 <> dCache.io.flush
-  storeQueueAndDCacheFlusher.io.in <> io.dCacheFlush
+  // Store queue flush
+  io.dCacheFlush <> storeQueue.io.flush
 
   // ALU
   alu.io.in <> aluExecuteQueue.io.deq
@@ -322,8 +352,8 @@ class CoreExecute(config: CoreConfig) extends Module {
   memoryExecuteQueue.io.broadcast <> io.broadcast
   memoryExecuteQueue.io.recover := io.recover
 
-  // Reader2Interconnect
-  reader2Interconnect.io.out <> dCache.io.upReader
+  // CacheLineRequest2Interconnect
+  cacheLineRequest2Interconnect.io.out <> io.cacheLineRequest
 
   // Dequeue
   io.deqs(0) <> alu.io.out

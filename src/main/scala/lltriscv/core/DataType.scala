@@ -36,4 +36,5 @@ object CoreConstant {
   val XLEN = 32
   val instructionLength = 4
   val compressInstructionLength = 2
+  val cacheCellLength = 16
 }

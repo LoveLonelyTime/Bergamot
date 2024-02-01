@@ -5,19 +5,27 @@ import chisel3.util._
 
 import lltriscv.core.execute.MemoryAccessLength
 
+import lltriscv.utils.ChiselUtils._
+import lltriscv.utils.CoreUtils._
+
 /** Core M/MMIO aggregation interface
   *
   * Provide conversion from a set of SMA buses to AXI bus
   *
-  * Misaligned address access not supported
+  * @note
+  *   Misaligned address access not supported
   */
 class AXIMaster extends Module {
   val io = IO(new Bundle {
+    // In
     val smaReader = Flipped(new SMAReaderIO())
     val smaWriter = Flipped(new SMAWriterIO())
-
+    // Out
     val axi = new AXIMasterIO()
   })
+  io.smaReader <> new SMAReaderIO().zero
+  io.smaWriter <> new SMAWriterIO().zero
+  io.axi <> new AXIMasterIO().zero
 
   private object AXIStatus extends ChiselEnum {
     val idle, address, data, response = Value;
@@ -35,7 +43,7 @@ class AXIMaster extends Module {
   when(readerStatusReg === AXIStatus.address) {
     // 32-bit address alignment
     io.axi.ARADDR := io.smaReader.address(31, 2) ## 0.U(2.W)
-    io.axi.ARPORT := 0.U
+    io.axi.ARPORT := 0.U // Ignore
     io.axi.ARVALID := true.B
     when(io.axi.ARREADY) {
       readerStatusReg := AXIStatus.response
@@ -46,6 +54,7 @@ class AXIMaster extends Module {
     io.axi.RREADY := true.B
 
     when(io.axi.RVALID) {
+      // Byte mapping
       switch(io.smaReader.readType) {
         is(MemoryAccessLength.byte) {
           io.smaReader.data := MuxLookup(io.smaReader.address(1, 0), 0.U)(
@@ -64,8 +73,7 @@ class AXIMaster extends Module {
           io.smaReader.data := io.axi.RDATA
         }
       }
-
-      io.smaReader.error := false.B
+      io.smaReader.error := io.axi.RRESP =/= 0.U
       io.smaReader.ready := true.B
 
       readerStatusReg := AXIStatus.idle
@@ -92,6 +100,7 @@ class AXIMaster extends Module {
   }
 
   when(writerStatusReg === AXIStatus.data) {
+    // Byte mapping
     switch(io.smaWriter.writeType) {
       is(MemoryAccessLength.byte) {
         io.axi.WDATA := MuxLookup(io.smaWriter.address(1, 0), 0.U)(
@@ -134,7 +143,7 @@ class AXIMaster extends Module {
     io.axi.BREADY := true.B
     when(io.axi.BVALID) {
       io.smaWriter.ready := true.B
-      io.smaWriter.error := 0.U
+      io.smaWriter.error := io.axi.BRESP =/= 0.U
       writerStatusReg := AXIStatus.idle
     }
   }

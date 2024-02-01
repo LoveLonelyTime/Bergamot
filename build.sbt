@@ -1,8 +1,8 @@
 // See README.md for license details.
 
-ThisBuild / scalaVersion     := "2.13.12"
-ThisBuild / version          := "0.1.0"
-ThisBuild / organization     := "com.github.lovelonelytime"
+ThisBuild / scalaVersion := "2.13.12"
+ThisBuild / version := "0.1.0"
+ThisBuild / organization := "com.github.lovelonelytime"
 
 val chiselVersion = "5.1.0"
 
@@ -18,8 +18,7 @@ lazy val root = (project in file("."))
       "-deprecation",
       "-feature",
       "-Xcheckinit",
-      "-Ymacro-annotations",
+      "-Ymacro-annotations"
     ),
-    addCompilerPlugin("org.chipsalliance" % "chisel-plugin" % chiselVersion cross CrossVersion.full),
+    addCompilerPlugin("org.chipsalliance" % "chisel-plugin" % chiselVersion cross CrossVersion.full)
   )
-

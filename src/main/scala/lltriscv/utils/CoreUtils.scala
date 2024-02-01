@@ -4,6 +4,7 @@ import chisel3._
 import chisel3.util._
 import lltriscv.core.broadcast.DataBroadcastSlotEntry
 import lltriscv.core.broadcast.DataBroadcastEntry
+import lltriscv.core.CoreConstant
 
 /*
  * Core utils collection
@@ -73,6 +74,12 @@ object CoreUtils {
   def VecInit2[T <: Data](data: T) = VecInit.fill(2)(data)
 
   def isCompressInstruction(instruction: UInt) = instruction(1, 0) =/= "b11".U
+
+  def getWordAddress(addr: UInt) = addr(CoreConstant.XLEN - 1, 2)
+  def getCacheLineTag(address: UInt, tagDepth: Int) = address(CoreConstant.XLEN - 1, CoreConstant.XLEN - log2Ceil(tagDepth))
+  def getCacheLineAddress(address: UInt, cacheLineDepth: Int) = address(CoreConstant.XLEN - 1, log2Ceil(cacheLineDepth) + 1) ## 0.U((log2Ceil(cacheLineDepth) + 1).W)
+  def getCacheLineOffset(address: UInt, cacheLineDepth: Int) = address(log2Ceil(cacheLineDepth), 1)
+
 }
 
 object Sv32 {
