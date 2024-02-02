@@ -19,10 +19,12 @@ import lltriscv.utils.ReadWriteSRAM
   *
   * @param size
   *   Size
+  * @param base
+  *   Base address
   * @param img
   *   Image file
   */
-class ROM(size: Int, img: String = "") extends Module {
+class ROM(size: Int, base: String, img: String = "") extends Module {
   val io = IO(new Bundle {
     val axi = Flipped(new AXIMasterIO())
   })
@@ -37,7 +39,7 @@ class ROM(size: Int, img: String = "") extends Module {
 
   when(io.axi.ARVALID) {
     io.axi.ARREADY := true.B
-    mem.io.addr := getWordAddress(io.axi.ARADDR)
+    mem.io.addr := getWordAddress(io.axi.ARADDR - base.U)
   }
 
   io.axi.RVALID := true.B

@@ -35,7 +35,7 @@ import lltriscv.utils.Sv32
   * @param pcInit
   *   The initial value of PC when booting the core
   */
-class Fetch(cacheLineDepth: Int, queueDepth: Int, predictorDepth: Int, pcInit: Int) extends Module {
+class Fetch(cacheLineDepth: Int, queueDepth: Int, predictorDepth: Int, pcInit: String) extends Module {
   val io = IO(new Bundle {
     val itlb = new TLBRequestIO()
     val icache = new CacheLineRequestIO(cacheLineDepth)
@@ -595,7 +595,7 @@ class InstructionPredictor(depth: Int) extends Module {
   * @param pcInit
   *   The initial value of PC when booting the core
   */
-class SpeculationStage(depth: Int, pcInit: Int) extends Module {
+class SpeculationStage(depth: Int, pcInit: String) extends Module {
   val io = IO(new Bundle {
     val in = Input(Vec2(new RawInstructionEntry()))
     val out = DecoupledIO(Vec2(new SpeculativeEntry()))

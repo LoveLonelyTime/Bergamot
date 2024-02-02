@@ -19,8 +19,10 @@ import lltriscv.utils.DoublePortSRAM
   *
   * @param size
   *   Size
+  * @param base
+  *   Base Address
   */
-class RAM(size: Int) extends Module {
+class RAM(size: Int, base: String) extends Module {
   val io = IO(new Bundle {
     val axi = Flipped(new AXIMasterIO())
   })
@@ -40,7 +42,7 @@ class RAM(size: Int) extends Module {
 
   when(io.axi.ARVALID) {
     io.axi.ARREADY := true.B
-    mem.foreach(_.io.rdAddr := getWordAddress(io.axi.ARADDR))
+    mem.foreach(_.io.rdAddr := getWordAddress(io.axi.ARADDR - base.U))
   }
 
   io.axi.RVALID := true.B
@@ -49,7 +51,7 @@ class RAM(size: Int) extends Module {
 
   when(io.axi.AWVALID) {
     io.axi.AWREADY := true.B
-    writeAddress := io.axi.AWADDR
+    writeAddress := io.axi.AWADDR - base.U
   }
 
   when(io.axi.WVALID) {

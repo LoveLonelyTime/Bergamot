@@ -164,6 +164,10 @@ class SetCache(tagDepth: Int, wayDepth: Int, cacheLineDepth: Int) extends Module
     val idle, lookup, read, write = Value;
   }
 
+  private val flushWorkingReg = RegInit(true.B) // Flush on reset
+  private val flushIncr = WireInit(false.B)
+  private val (flushReg, _) = pointer(tagDepth, flushIncr)
+
   private val statusReg = RegInit(Status.idle)
   private val responseReadReg = RegInit(false.B)
 
@@ -185,20 +189,38 @@ class SetCache(tagDepth: Int, wayDepth: Int, cacheLineDepth: Int) extends Module
     item.io.write := false.B
   }
 
+  when(flushWorkingReg) {
+    tagMem.foreach { tagWay =>
+      tagWay.io.addr := flushReg
+      tagWay.io.dataIn := 0.U
+      tagWay.io.write := true.B
+    }
+
+    when(flushReg === (tagDepth - 1).U) { // Finish
+      flushWorkingReg := false.B
+      io.flush.empty := true.B
+    }.otherwise {
+      flushIncr := true.B
+    }
+  }
+
   when(statusReg === Status.idle) {
     val address = Mux(responseReadReg, io.inReader.address, io.inWriter.address)
 
-    tagMem.zip(dataMem).foreach { case (tagWay, dataWay) =>
-      val tag = getCacheLineTag(address, tagDepth)
-      tagWay.io.addr := tag
-      dataWay.io.addr := tag
+    when(!flushWorkingReg) {
+      tagMem.zip(dataMem).foreach { case (tagWay, dataWay) =>
+        val tag = getCacheLineTag(address, tagDepth)
+        tagWay.io.addr := tag
+        dataWay.io.addr := tag
+      }
     }
 
     when(io.flush.req) {
-      // validRegs.foreach(_.foreach(_ := false.B))
-      // TODO
-      io.flush.empty := true.B
-    }.elsewhen(io.inReader.valid) {
+      flushWorkingReg := true.B
+      flushReg := 0.U
+    }
+
+    when(io.inReader.valid) {
       responseReadReg := true.B
       statusReg := Status.lookup
     }.elsewhen(io.inWriter.valid) {
@@ -213,37 +235,39 @@ class SetCache(tagDepth: Int, wayDepth: Int, cacheLineDepth: Int) extends Module
     val offset = getCacheLineOffset(address, cacheLineDepth)
     val hit = WireInit(false.B)
 
-    tagMem.zip(dataMem).foreach { case (tagWay, dataWay) =>
-      tagWay.io.addr := tag
-      dataWay.io.addr := tag
+    when(!flushWorkingReg) {
+      tagMem.zip(dataMem).foreach { case (tagWay, dataWay) =>
+        tagWay.io.addr := tag
+        dataWay.io.addr := tag
 
-      val tagCell = tagWay.io.dataOut
-      val dataCell = dataWay.io.dataOut
+        val tagCell = tagWay.io.dataOut
+        val dataCell = dataWay.io.dataOut
 
-      when(tagCell(0) && tagCell(31, 1) === getCacheLineAddress(address, cacheLineDepth)) { // Hit
-        hit := true.B
-        when(responseReadReg) { // Hit read
-          io.inReader.error := false.B
-          io.inReader.data := dataCell
-          io.inReader.ready := true.B
+        when(tagCell(0) && tagCell(31, 1) === getCacheLineAddress(address, cacheLineDepth)) { // Hit
+          hit := true.B
+          when(responseReadReg) { // Hit read
+            io.inReader.error := false.B
+            io.inReader.data := dataCell
+            io.inReader.ready := true.B
 
-          statusReg := Status.idle
-        }.otherwise { // Hit write
-          val newData = WireInit(dataCell)
-          switch(io.inWriter.writeType) {
-            is(MemoryAccessLength.byte) {
-              newData(offset) := Mux(address(0), io.inWriter.data(7, 0) ## dataCell(offset)(7, 0), dataCell(offset)(15, 8) ## io.inWriter.data(7, 0))
+            statusReg := Status.idle
+          }.otherwise { // Hit write
+            val newData = WireInit(dataCell)
+            switch(io.inWriter.writeType) {
+              is(MemoryAccessLength.byte) {
+                newData(offset) := Mux(address(0), io.inWriter.data(7, 0) ## dataCell(offset)(7, 0), dataCell(offset)(15, 8) ## io.inWriter.data(7, 0))
+              }
+              is(MemoryAccessLength.half) {
+                newData(offset) := io.inWriter.data(15, 0)
+              }
+              is(MemoryAccessLength.word) {
+                newData(offset) := io.inWriter.data(15, 0)
+                newData(offset + 1.U) := io.inWriter.data(31, 16)
+              }
             }
-            is(MemoryAccessLength.half) {
-              newData(offset) := io.inWriter.data(15, 0)
-            }
-            is(MemoryAccessLength.word) {
-              newData(offset) := io.inWriter.data(15, 0)
-              newData(offset + 1.U) := io.inWriter.data(31, 16)
-            }
+            dataWay.io.dataIn := newData
+            dataWay.io.write := true.B
           }
-          dataWay.io.dataIn := newData
-          dataWay.io.write := true.B
         }
       }
     }
@@ -263,19 +287,21 @@ class SetCache(tagDepth: Int, wayDepth: Int, cacheLineDepth: Int) extends Module
     io.outReader.valid := true.B
 
     when(io.outReader.ready) {
-      tagMem.zip(dataMem).zipWithIndex.foreach { case ((tagWay, dataWay), way) =>
-        when(way.U === victimReg) {
-          tagWay.io.addr := tag
-          tagWay.io.dataIn := getCacheLineAddress(address, cacheLineDepth) ## 1.U
-          tagWay.io.write := !io.outReader.error // Do not write when an error occurs
+      when(!flushWorkingReg) {
+        tagMem.zip(dataMem).zipWithIndex.foreach { case ((tagWay, dataWay), way) =>
+          when(way.U === victimReg) {
+            tagWay.io.addr := tag
+            tagWay.io.dataIn := getCacheLineAddress(address, cacheLineDepth) ## 1.U
+            tagWay.io.write := !io.outReader.error // Do not write when an error occurs
 
-          dataWay.io.addr := tag
-          dataWay.io.dataIn := io.outReader.data
-          dataWay.io.write := !io.outReader.error
+            dataWay.io.addr := tag
+            dataWay.io.dataIn := io.outReader.data
+            dataWay.io.write := !io.outReader.error
+          }
         }
       }
-      victimIncr := true.B
 
+      victimIncr := true.B
       io.inReader.error := io.outReader.error
       io.inReader.data := io.outReader.data
       io.inReader.ready := true.B

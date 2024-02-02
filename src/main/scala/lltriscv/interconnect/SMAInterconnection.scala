@@ -96,3 +96,28 @@ class SMA2ReaderInterconnect extends Module {
     }
   }
 }
+
+/** Skip cache SMA reader interconnect
+  *
+  * Usually let read MMIO with skipping cache
+  *
+  * @param barrier
+  *   Barrier address
+  */
+class SkipCacheSMAReaderInterconnect(barrier: String) extends Module {
+  val io = IO(new Bundle {
+    val in = Flipped(new SMAReaderIO())
+    val out1 = new SMAReaderIO()
+    val out2 = new SMAReaderIO()
+  })
+
+  io.in <> new SMAReaderIO().zero
+  io.out1 <> new SMAReaderIO().zero
+  io.out2 <> new SMAReaderIO().zero
+
+  when(io.in.address < barrier.U) {
+    io.out1 <> io.in
+  }.otherwise {
+    io.out2 <> io.in
+  }
+}

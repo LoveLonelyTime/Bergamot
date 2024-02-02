@@ -46,6 +46,7 @@ import lltriscv.cache.CacheLineRequestIO
 import lltriscv.bus.AXIMaster
 import lltriscv.cache.CacheLineRequest2SMA
 import lltriscv.bus.AXIMasterIO
+import lltriscv.interconnect.SkipCacheSMAReaderInterconnect
 
 /*
  * LLT RISC-V Core Exquisite integration
@@ -66,7 +67,7 @@ import lltriscv.bus.AXIMasterIO
   * @param predictorDepth
   * @param pcInit
   */
-case class CoreConfig(iTLBDepth: Int, cacheLineDepth: Int, fetchQueueDepth: Int, executeQueueWidth: Int, executeQueueDepth: Int, dTLBDepth: Int, storeQueueDepth: Int, robDepth: Int, predictorDepth: Int, pcInit: Int, l1CacheDepth: Int, l1CacheWay: Int, l2CacheDepth: Int, l2CacheWay: Int)
+case class CoreConfig(iTLBDepth: Int, cacheLineDepth: Int, fetchQueueDepth: Int, executeQueueWidth: Int, executeQueueDepth: Int, dTLBDepth: Int, storeQueueDepth: Int, robDepth: Int, predictorDepth: Int, pcInit: String, l1CacheDepth: Int, l1CacheWay: Int, l2CacheDepth: Int, l2CacheWay: Int, memoryAddress: String)
 
 object CoreConfig {
 
@@ -82,11 +83,12 @@ object CoreConfig {
     storeQueueDepth = 8,
     robDepth = 8,
     predictorDepth = 8,
-    pcInit = 0x0,
+    pcInit = "h00000000",
     l1CacheDepth = 1024,
     l1CacheWay = 2,
     l2CacheDepth = 4096,
-    l2CacheWay = 4
+    l2CacheWay = 4,
+    memoryAddress = "h80000000"
   )
 }
 
@@ -112,6 +114,8 @@ class LLTRISCVCoreExq(config: CoreConfig) extends Module {
 
   private val axiMaster = Module(new AXIMaster())
   private val cacheLineRequest2SMA = Module(new CacheLineRequest2SMA(config.cacheLineDepth))
+  private val sma2ReaderInterconnect = Module(new SMA2ReaderInterconnect())
+
   // CoreFrontend
   coreFrontend.io.cacheLineRequest <> cacheLineRequest2Interconnect.io.in1
   coreFrontend.io.broadcast <> coreBackend.io.broadcast
@@ -129,6 +133,7 @@ class LLTRISCVCoreExq(config: CoreConfig) extends Module {
   coreExecute.io.broadcast <> coreBackend.io.broadcast
   coreExecute.io.cacheLineRequest <> cacheLineRequest2Interconnect.io.in2
   coreExecute.io.smaWriter <> l2Cache.io.inWriter
+  coreExecute.io.ioSMAReader <> sma2ReaderInterconnect.io.in1 // IO read priority
   coreExecute.io.privilege := coreBackend.io.privilege
   coreExecute.io.mstatus := coreBackend.io.mstatus
   coreExecute.io.satp := coreBackend.io.satp
@@ -151,11 +156,12 @@ class LLTRISCVCoreExq(config: CoreConfig) extends Module {
   // L2 Cache
   l2Cache.io.inReader <> cacheLineRequest2Interconnect.io.out
   l2Cache.io.outReader <> cacheLineRequest2SMA.io.request
-  cacheLineRequest2SMA.io.smaReader <> axiMaster.io.smaReader
+  cacheLineRequest2SMA.io.smaReader <> sma2ReaderInterconnect.io.in2
   l2Cache.io.outWriter <> axiMaster.io.smaWriter
   l2Cache.io.flush.req := false.B
 
   // AXIMaster
+  sma2ReaderInterconnect.io.out <> axiMaster.io.smaReader
   axiMaster.io.axi <> io.axi
 }
 
@@ -255,6 +261,7 @@ class CoreExecute(config: CoreConfig) extends Module {
 
     val cacheLineRequest = new CacheLineRequestIO(config.cacheLineDepth)
     val smaWriter = new SMAWriterIO()
+    val ioSMAReader = new SMAReaderIO()
 
     val privilege = Input(PrivilegeType())
     val satp = Input(DataType.operation)
@@ -291,7 +298,7 @@ class CoreExecute(config: CoreConfig) extends Module {
 
   private val sma2CacheLineRequestTLB = Module(new SMA2CacheLineRequest(config.cacheLineDepth))
   private val sma2CacheLineRequestStore = Module(new SMA2CacheLineRequest(config.cacheLineDepth))
-
+  private val skipCacheSMAReaderInterconnect = Module(new SkipCacheSMAReaderInterconnect(config.memoryAddress))
   private val cacheLineRequest2Interconnect = Module(new CacheLineRequest2Interconnect(config.cacheLineDepth))
   // Enqueue
   io.enqs(0) <> aluExecuteQueue.io.enqAndType
@@ -321,8 +328,10 @@ class CoreExecute(config: CoreConfig) extends Module {
 
   // SMAWithStoreQueueInterconnect
   smaWithStoreQueueInterconnect.io.bypass <> storeQueue.io.bypass
-  smaWithStoreQueueInterconnect.io.out <> sma2CacheLineRequestStore.io.smaReader
+  smaWithStoreQueueInterconnect.io.out <> skipCacheSMAReaderInterconnect.io.in
+  skipCacheSMAReaderInterconnect.io.out2 <> sma2CacheLineRequestStore.io.smaReader
   sma2CacheLineRequestStore.io.request <> dCache.io.inReader
+  skipCacheSMAReaderInterconnect.io.out1 <> io.ioSMAReader
 
   // Store queue flush
   io.dCacheFlush <> storeQueue.io.flush
