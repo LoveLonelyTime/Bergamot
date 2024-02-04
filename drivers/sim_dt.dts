@@ -1,0 +1,66 @@
+/dts-v1/;
+
+/ {
+    #address-cells = <0x2>;
+    #size-cells = <0x2>;
+
+	compatible = "riscv-virtio";
+	model = "riscv-virtio,qemu";
+
+    
+	memory@80000000 {
+		device_type = "memory";
+		reg = <0x00 0x80000000 0x00 0x10000000>;
+	};
+
+    cpus {
+		#address-cells = <0x01>;
+		#size-cells = <0x00>;
+		timebase-frequency = <0x989680>;
+
+        cpu@0 {
+            phandle = <0x1>;
+            device_type = "cpu";
+            reg = <0x0>;
+            status = "okay";
+            compatible = "riscv";
+            riscv,cbop-block-size = <0x40>;
+			riscv,cboz-block-size = <0x40>;
+			riscv,cbom-block-size = <0x40>;
+            riscv,isa = "rv32imacsu";
+			mmu-type = "riscv,sv32";
+
+			interrupt-controller {
+				#interrupt-cells = <0x01>;
+				interrupt-controller;
+				compatible = "riscv,cpu-intc";
+				phandle = <0x02>;
+			};
+        };
+
+        cpu-map {
+			cluster0 {
+				core0 {
+					cpu = <0x01>;
+				};
+			};
+		};
+    };
+    chosen {
+		bootargs = "earlycon";
+		stdout-path = "/soc/uart0@10000000";
+	};
+
+    soc {
+        #address-cells = <0x2>;
+        #size-cells = <0x2>;
+    	compatible = "simple-bus";
+		ranges;
+
+        uart0@10000000 {
+			clock-frequency = "\08@";           
+			reg = <0x00 0x10000000 0x00 0x100>;
+			compatible = "ns16550a";
+        };
+    };
+};

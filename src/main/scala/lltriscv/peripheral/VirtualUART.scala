@@ -32,7 +32,7 @@ class VirtualUART(base: String) extends Module {
 
   // Read logic
   when(readAddressReg === 4.U) { // UART_SCR_OFFSET UART_MSR_OFFSET UART_LSR_OFFSET UART_MCR_OFFSET
-    val LSR = 0.U(2.W) ## !isSendingFlag ## 0.U(4.W) ## 0.U
+    val LSR = 0.U ## !isSendingFlag ## !isSendingFlag ## 0.U(4.W) ## 0.U
     io.axi.RDATA := 0.U(8.W) ## 0.U(8.W) ## LSR ## 0.U(8.W)
   }
 
