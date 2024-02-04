@@ -126,7 +126,9 @@ class InstructionRetire(depth: Int) extends Module {
     io.correctPC := io.trap.handlerPC
 
     io.retired.ready := true.B
-    printf("Exception!!!! pc = %d, cause = %d,to = %d\n", entry.pc, entry.executeResult.exceptionCode, io.trap.handlerPC)
+    when(entry.pc >= "h80400000".U) {
+      printf("Exception!!!! pc = %x, cause = %d,to = %x\n", entry.pc, entry.executeResult.exceptionCode, io.trap.handlerPC)
+    }
   }
 
   private def gotoInterruptHandler(entry: ROBTableEntry) = {
@@ -137,7 +139,7 @@ class InstructionRetire(depth: Int) extends Module {
     io.correctPC := io.trap.handlerPC
 
     io.retired.ready := true.B
-    printf("Interrupt!!!! pc = %d to= %d\n", entry.pc, io.trap.handlerPC)
+    printf("Interrupt!!!! pc = %x to= %x\n", entry.pc, io.trap.handlerPC)
   }
 
   private def gotoRecoveryPath(entry: ROBTableEntry) = {
@@ -145,12 +147,15 @@ class InstructionRetire(depth: Int) extends Module {
     io.correctPC := entry.executeResult.real
 
     io.retired.ready := true.B
-    printf(
-      "spec violate!!!: pc = %d, sepc = %d, real = %d\n",
-      entry.pc,
-      entry.spec,
-      entry.executeResult.real
-    )
+
+    // when(entry.pc >= "h80400000".U) {
+    //   printf(
+    //     "spec violate!!!: pc = %x, sepc = %x, real = %x\n",
+    //     entry.pc,
+    //     entry.spec,
+    //     entry.executeResult.real
+    //   )
+    // }
   }
 
   private def gotoXRetPath(entry: ROBTableEntry) = {
@@ -165,10 +170,12 @@ class InstructionRetire(depth: Int) extends Module {
 
     io.retired.ready := true.B
 
-    printf(
-      "xret !!!: pc = %d\n",
-      entry.pc
-    )
+    when(entry.pc >= "h80400000".U) {
+      printf(
+        "xret !!!: pc = %x\n",
+        entry.pc
+      )
+    }
   }
 
   private def gotoCSRPath(entry: ROBTableEntry) = {
@@ -195,12 +202,15 @@ class InstructionRetire(depth: Int) extends Module {
       io.predictorUpdate.entries(id).pc := retireEntries(id).pc
       io.predictorUpdate.entries(id).address := retireEntries(id).executeResult.real
     }
-    printf(
-      "retired instruction: pc = %d , r = %d, v = %d\n",
-      retireEntries(id).pc,
-      retireEntries(id).executeResult.result,
-      retireEntries(id).valid
-    )
+
+    // when(retireEntries(id).pc >= "h80400000".U) {
+    //   printf(
+    //     "retired instruction: pc = %x , r = %x, v = %d\n",
+    //     retireEntries(id).pc,
+    //     retireEntries(id).executeResult.result,
+    //     retireEntries(id).valid
+    //   )
+    // }
   }
 
   private def retireStoreQueue(id: Int) = {

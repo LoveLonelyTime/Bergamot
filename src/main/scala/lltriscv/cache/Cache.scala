@@ -215,7 +215,7 @@ class SetCache(tagDepth: Int, wayDepth: Int, cacheLineDepth: Int) extends Module
       }
     }
 
-    when(io.flush.req) {
+    when(io.flush.req && !flushWorkingReg) {
       flushWorkingReg := true.B
       flushReg := 0.U
     }

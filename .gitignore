@@ -352,4 +352,4 @@ hs_err_pid*
 # Generated
 generated/
 *.bin
-
+sim/

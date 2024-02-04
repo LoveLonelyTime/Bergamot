@@ -109,7 +109,7 @@ class TLB(depth: Int, data: Boolean) extends Module {
     else io.privilege
 
   private def alignmentCheck(entry: TLBEntry) = {
-    !entry.mPage || entry.ppn(10, 0) === 0.U
+    !entry.mPage || entry.ppn(9, 0) === 0.U
   }
 
   private def pteDACheck(da: UInt) = {
@@ -178,7 +178,8 @@ class TLB(depth: Int, data: Boolean) extends Module {
 
       grant.zip(table).foreach { case (granted, entry) =>
         when(granted) {
-          printf("TLB Hit: vaddr= %d, paddr= %d, da= %d, uxwr = %d\n", io.request.vaddress, io.request.paddress, entry.da, entry.uxwr)
+          // printf("TLB Hit: vaddr= %x, paddr= %x, da= %d, uxwr = %d, v = %d\n", io.request.vaddress, io.request.paddress, entry.da, entry.uxwr, entry.v)
+          // printf("Check TLB da = %d, pc = %d, ac = %d\n", pteDACheck(entry.da), ptePrivilegeCheck(entry.uxwr), alignmentCheck(entry))
           when(entry.v && pteDACheck(entry.da) && ptePrivilegeCheck(entry.uxwr) && alignmentCheck(entry)) {
             // 34 -> 32
             io.request.paddress := Mux(
@@ -211,7 +212,7 @@ class TLB(depth: Int, data: Boolean) extends Module {
     io.sma.valid := true.B
     when(io.sma.ready) { // Finished
       when(!io.sma.error) {
-        printf("Walk vpn1: addr = %d, pte = %d\n", io.sma.address, io.sma.data)
+        // printf("Walk vpn1: addr = %d, pte = %d\n", io.sma.address, io.sma.data)
         val pte = io.sma.data
         vpn1Reg := pte // Save
         when(pte(4, 2) === "b000".U) { // Next
@@ -242,7 +243,7 @@ class TLB(depth: Int, data: Boolean) extends Module {
     when(io.sma.ready) { // Finished
       val pte = io.sma.data
       when(!io.sma.error) { // Leaf
-        printf("Walk vpn0: addr = %d, pte = %d\n", io.sma.address, io.sma.data)
+        // printf("Walk vpn0: addr = %d, pte = %d\n", io.sma.address, io.sma.data)
         alloc(pte, false.B, vpn1Reg(5))
         statusReg := Status.lookup // Return
       }.otherwise { // Memory error

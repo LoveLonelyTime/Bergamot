@@ -196,7 +196,6 @@ class MemoryExecuteStage extends Module {
   ) {
     io.out.bits.error := MemoryErrorCode.misaligned
   }
-  chisel3.util.BitPat
 
   io.out.bits.rd := inReg.rd
   io.out.bits.pc := inReg.pc
@@ -243,7 +242,7 @@ class MemoryTLBStage extends Module {
   when(io.in.fire) { // Sample
     inReg := io.in.bits
 
-    when(io.in.bits.valid && io.in.bits.error === MemoryErrorCode.none) { // Effective access
+    when(io.in.bits.valid && !io.recover && io.in.bits.error === MemoryErrorCode.none) { // Effective access
       statusReg := Status.request
     }
   }
@@ -334,7 +333,8 @@ class MemoryReadWriteStage extends Module {
 
   when(io.in.fire) { // Sample
     inReg := io.in.bits
-    when(io.in.bits.valid && io.in.bits.error === MemoryErrorCode.none) { // Effective access
+
+    when(io.in.bits.valid && !io.recover && io.in.bits.error === MemoryErrorCode.none) { // Effective access
       when(io.in.bits.op in MemoryOperationType.readValues) {
         statusReg := Status.read
       }.elsewhen(io.in.bits.op in MemoryOperationType.writeValues) {
@@ -364,7 +364,7 @@ class MemoryReadWriteStage extends Module {
       readError := io.sma.error
       statusReg := Status.idle
 
-      when(!readError) {
+      when(!readError && inReg.valid && !io.recover) {
         when(inReg.op === MemoryOperationType.lr) { // lr
           loadReservation.address := inReg.vaddress
           loadReservation.valid := true.B

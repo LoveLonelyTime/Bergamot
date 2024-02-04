@@ -79,7 +79,6 @@ object CoreUtils {
   def getCacheLineTag(address: UInt, tagDepth: Int) = address(CoreConstant.XLEN - 1, CoreConstant.XLEN - log2Ceil(tagDepth))
   def getCacheLineAddress(address: UInt, cacheLineDepth: Int) = address(CoreConstant.XLEN - 1, log2Ceil(cacheLineDepth) + 1) ## 0.U((log2Ceil(cacheLineDepth) + 1).W)
   def getCacheLineOffset(address: UInt, cacheLineDepth: Int) = address(log2Ceil(cacheLineDepth), 1)
-
 }
 
 object Sv32 {
