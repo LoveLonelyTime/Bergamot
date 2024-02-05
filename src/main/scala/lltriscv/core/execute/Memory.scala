@@ -441,7 +441,11 @@ class MemoryReadWriteStage extends Module {
   }
 
   // Alloc ID
-  when(inReg.op in MemoryOperationType.writeValues) {
+  when(inReg.op === MemoryOperationType.sc) { // Advance judgment
+    when(scSuccess(inReg.vaddress)) {
+      io.out.bits.resultMemory(allocID)
+    }
+  }.elsewhen(inReg.op in MemoryOperationType.writeValues) {
     io.out.bits.resultMemory(allocID)
   }
 

@@ -20,6 +20,7 @@ import lltriscv.cache.FlushCacheIO
 import lltriscv.utils.CoreUtils._
 import lltriscv.utils.ChiselUtils._
 import lltriscv.core.record.MonitorIO
+import lltriscv.core.debug.DebugIO
 
 /*
  * Instruction retire
@@ -66,7 +67,12 @@ class InstructionRetire(depth: Int) extends Module {
     val l2DCacheFlush = new FlushCacheIO()
     val iCacheFlush = new FlushCacheIO()
     val tlbFlush = new FlushCacheIO()
+
+    // Debug
+    val debug = new DebugIO()
   })
+  private val debugBreakpoint = RegInit(false.B)
+  io.debug.hit := debugBreakpoint
 
   private object Status extends ChiselEnum {
     val retire, dCache, l2DCache, iCache, tlb = Value
@@ -126,6 +132,7 @@ class InstructionRetire(depth: Int) extends Module {
     io.correctPC := io.trap.handlerPC
 
     io.retired.ready := true.B
+
     when(entry.pc >= "h80400000".U) {
       printf("Exception!!!! pc = %x, cause = %d,to = %x\n", entry.pc, entry.executeResult.exceptionCode, io.trap.handlerPC)
     }
@@ -148,14 +155,14 @@ class InstructionRetire(depth: Int) extends Module {
 
     io.retired.ready := true.B
 
-    // when(entry.pc >= "h80400000".U) {
-    //   printf(
-    //     "spec violate!!!: pc = %x, sepc = %x, real = %x\n",
-    //     entry.pc,
-    //     entry.spec,
-    //     entry.executeResult.real
-    //   )
-    // }
+    when(debugBreakpoint) {
+      printf(
+        "spec violate!!!: pc = %x, sepc = %x, real = %x\n",
+        entry.pc,
+        entry.spec,
+        entry.executeResult.real
+      )
+    }
   }
 
   private def gotoXRetPath(entry: ROBTableEntry) = {
@@ -203,14 +210,17 @@ class InstructionRetire(depth: Int) extends Module {
       io.predictorUpdate.entries(id).address := retireEntries(id).executeResult.real
     }
 
-    // when(retireEntries(id).pc >= "h80400000".U) {
-    //   printf(
-    //     "retired instruction: pc = %x , r = %x, v = %d\n",
-    //     retireEntries(id).pc,
-    //     retireEntries(id).executeResult.result,
-    //     retireEntries(id).valid
-    //   )
-    // }
+    when(retireEntries(id).pc === "hc0002a44".U) {
+      debugBreakpoint := true.B
+    }
+    when(debugBreakpoint) {
+      printf(
+        "retired instruction: pc = %x , r = %x, v = %d\n",
+        retireEntries(id).pc,
+        retireEntries(id).executeResult.result,
+        retireEntries(id).valid
+      )
+    }
   }
 
   private def retireStoreQueue(id: Int) = {

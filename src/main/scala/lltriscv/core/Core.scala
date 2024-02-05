@@ -47,6 +47,7 @@ import lltriscv.bus.AXIMaster
 import lltriscv.cache.CacheLineRequest2SMA
 import lltriscv.bus.AXIMasterIO
 import lltriscv.interconnect.SkipCacheSMAReaderInterconnect
+import lltriscv.core.debug.DebugIO
 
 /*
  * LLT RISC-V Core Exquisite integration
@@ -100,6 +101,11 @@ object CoreConfig {
 class LLTRISCVCoreExq(config: CoreConfig) extends Module {
   val io = IO(new Bundle {
     val axi = new AXIMasterIO()
+
+    val mtime = Input(UInt(64.W))
+    val mtimeIRQ = Input(Bool())
+
+    val debug = new DebugIO()
   })
 
   private val coreFrontend = Module(new CoreFrontend(config))
@@ -148,6 +154,9 @@ class LLTRISCVCoreExq(config: CoreConfig) extends Module {
   coreBackend.io.updateLoadReservation <> coreExecute.io.updateLoadReservation
   coreBackend.io.predictorUpdate <> coreFrontend.io.predictorUpdate
   coreBackend.io.store <> coreExecute.io.retire
+  coreBackend.io.mtime := io.mtime
+  coreBackend.io.mtimeIRQ := io.mtimeIRQ
+  coreBackend.io.debug <> io.debug
 
   // TLBFlusher
   tlbFlusher.io.out1 <> coreFrontend.io.iTLBFlush
@@ -401,6 +410,11 @@ class CoreBackend(config: CoreConfig) extends Module {
     val tlbFlush = new FlushCacheIO()
 
     val updateLoadReservation = new LoadReservationUpdateIO()
+
+    val mtime = Input(UInt(64.W))
+    val mtimeIRQ = Input(Bool())
+
+    val debug = new DebugIO()
   })
   private val broadcaster = Module(new RoundRobinBroadcaster(config.executeQueueWidth))
   private val instructionRetire = Module(new InstructionRetire(config.robDepth))
@@ -427,6 +441,7 @@ class CoreBackend(config: CoreConfig) extends Module {
   instructionRetire.io.iCacheFlush <> io.iCacheFlush
   instructionRetire.io.dCacheFlush <> io.dCacheFlush
   instructionRetire.io.tlbFlush <> io.tlbFlush
+  instructionRetire.io.debug <> io.debug
 
   instructionRetire.io.l2DCacheFlush.empty := true.B
 
@@ -440,4 +455,6 @@ class CoreBackend(config: CoreConfig) extends Module {
   io.privilege := csr.io.privilege
   io.mstatus := csr.io.mstatus
   io.satp := csr.io.satp
+  csr.io.mtime := io.mtime
+  csr.io.mtimeIRQ := io.mtimeIRQ
 }

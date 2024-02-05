@@ -35,15 +35,18 @@ class CSRs extends Module {
     val satp = Output(DataType.operation)
 
     val monitor = Flipped(new MonitorIO())
+
+    val mtime = Input(UInt(64.W))
+    val mtimeIRQ = Input(Bool())
   })
 
   // Registers
   private val coreRegister = new CoreRegister()
   private val statusReg = new StatusRegister()
   private val exceptionReg = new ExceptionRegister()
-  private val interruptsReg = new InterruptsRegister(false.B, false.B, false.B, false.B)
+  private val interruptsReg = new InterruptsRegister(io.mtimeIRQ, false.B, false.B, false.B)
   private val virtualReg = new VirtualRegister(statusReg.mstatus.value(20), statusReg.privilege)
-  private val monitorRegister = new MonitorRegister(statusReg.privilege, io.monitor.instret)
+  private val monitorRegister = new MonitorRegister(statusReg.privilege, io.monitor.instret, io.mtime)
 
   // Fixed output
   io.satp := virtualReg.satp.value
@@ -54,9 +57,12 @@ class CSRs extends Module {
   private val csrMappingTable = Seq(
     // Unprivileged
     "hc00".U -> monitorRegister.cycle,
+    "hc01".U -> monitorRegister.time,
     "hc02".U -> monitorRegister.instret,
     "hc80".U -> monitorRegister.cycleh,
+    "hc81".U -> monitorRegister.timeh,
     "hc82".U -> monitorRegister.instreth,
+
     // S-Level
     "h100".U -> statusReg.sstatus,
     "h104".U -> interruptsReg.sie,
@@ -183,6 +189,7 @@ class CSRs extends Module {
 
   when(io.trap.interruptTrigger) {
     val delegation = interruptsReg.mideleg.value(pendingInterruptCode)
+    printf("Pending code = %d\n", pendingInterruptCode)
     when(!delegation) { // M-Handler
       io.trap.handlerPC := exceptionReg.interruptMLevel(io.trap.trapPC, pendingInterruptCode, io.trap.trapVal)
       statusReg.trapToMLevel()
@@ -517,7 +524,7 @@ class CoreRegister {
 }
 
 // TODO: mtime
-class MonitorRegister(privilege: PrivilegeType.Type, instretVal: UInt) {
+class MonitorRegister(privilege: PrivilegeType.Type, instretVal: UInt, mtime: UInt) {
   private val mcountinhibitReg = RegInit(DataType.operation.zeroAsUInt)
   private val mcounterenReg = RegInit(DataType.operation.zeroAsUInt)
   private val scounterenReg = RegInit(DataType.operation.zeroAsUInt)
@@ -546,9 +553,13 @@ class MonitorRegister(privilege: PrivilegeType.Type, instretVal: UInt) {
     (privilege === PrivilegeType.S && !mcounterenReg(bit)) ||
       (privilege === PrivilegeType.U && (!mcounterenReg(bit) || !scounterenReg(bit)))
 
-  val cycle = ReadAndWriteRegister(() => cycleCounter(31, 0), data => cycleCounter := cycleCounter(63, 32) ## data, () => guard(0))
-  val cycleh = ReadAndWriteRegister(() => cycleCounter(63, 32), data => cycleCounter := data ## cycleCounter(31, 0), () => guard(0))
+  // Read-only
+  val cycle = ReadAndWriteRegister(() => cycleCounter(31, 0), _ => (), () => guard(0))
+  val cycleh = ReadAndWriteRegister(() => cycleCounter(63, 32), _ => (), () => guard(0))
 
-  val instret = ReadAndWriteRegister(() => instretCounter(31, 0), data => instretCounter := instretCounter(63, 32) ## data, () => guard(2))
-  val instreth = ReadAndWriteRegister(() => instretCounter(63, 32), data => instretCounter := data ## instretCounter(31, 0), () => guard(2))
+  val instret = ReadAndWriteRegister(() => instretCounter(31, 0), _ => (), () => guard(2))
+  val instreth = ReadAndWriteRegister(() => instretCounter(63, 32), _ => (), () => guard(2))
+
+  val time = ReadAndWriteRegister(() => mtime(31, 0), _ => (), () => guard(0))
+  val timeh = ReadAndWriteRegister(() => mtime(63, 32), _ => (), () => guard(0))
 }

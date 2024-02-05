@@ -23,6 +23,8 @@ import lltriscv.peripheral.VirtualWriteHost
 import lltriscv.peripheral.VirtualUART
 import lltriscv.peripheral.MemoryHole
 import lltriscv.peripheral.VirtualRAM
+import lltriscv.peripheral.MachineTimer
+import lltriscv.core.debug.DebugIO
 
 class NormalTest extends AnyFlatSpec with ChiselScalatestTester {
   // WriteVcdAnnotation
@@ -40,6 +42,8 @@ class NormalTest extends AnyFlatSpec with ChiselScalatestTester {
 
       val dataOut = Output(UInt(8.W))
       val send = Output(Bool())
+
+      val debug = new DebugIO()
     })
 
     private val core = Module(new LLTRISCVCoreExq(config))
@@ -48,6 +52,7 @@ class NormalTest extends AnyFlatSpec with ChiselScalatestTester {
       new AXIInterconnect(
         Seq(
           "h00000000", // hole
+          "h2000000", // mtime
           "h10000000", // uart
           "h80000000", // ram
           "hffff0000" // rom
@@ -56,6 +61,7 @@ class NormalTest extends AnyFlatSpec with ChiselScalatestTester {
     )
     private val hole = Module(new MemoryHole())
     private val uart = Module(new VirtualUART("h10000000"))
+    private val mtimer = Module(new MachineTimer("h2000000"))
     private val rom = Module(new ROM(32, "hffff0000", "boot.hex"))
     private val ram = Module(new VirtualRAM("h80000000"))
 
@@ -69,11 +75,16 @@ class NormalTest extends AnyFlatSpec with ChiselScalatestTester {
     io.send := uart.io.send
 
     interconnect.io.slaves(0) <> hole.io.axi
-    interconnect.io.slaves(1) <> uart.io.axi
-    interconnect.io.slaves(2) <> ram.io.axi
-    interconnect.io.slaves(3) <> rom.io.axi
+    interconnect.io.slaves(1) <> mtimer.io.axi
+    interconnect.io.slaves(2) <> uart.io.axi
+    interconnect.io.slaves(3) <> ram.io.axi
+    interconnect.io.slaves(4) <> rom.io.axi
 
+    core.io.mtime := mtimer.io.mtime
+    core.io.mtimeIRQ := mtimer.io.irq
     core.io.axi <> interconnect.io.master
+
+    core.io.debug <> io.debug
   }
 
   "Normal test" should "pass" in {
