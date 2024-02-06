@@ -144,6 +144,7 @@ class LLTRISCVCoreExq(config: CoreConfig) extends Module {
   coreExecute.io.mstatus := coreBackend.io.mstatus
   coreExecute.io.satp := coreBackend.io.satp
   coreExecute.io.recover := coreBackend.io.recover
+  coreExecute.io.debug <> coreBackend.io.debug
 
   // CoreBackend
   coreBackend.io.deqs <> coreExecute.io.deqs
@@ -219,6 +220,7 @@ class CoreFrontend(config: CoreConfig) extends Module {
   itlb.io.satp := io.satp
   itlb.io.mstatus := io.mstatus
   itlb.io.flush <> io.iTLBFlush
+  itlb.io.debug.hit := false.B
 
   // ICache
   // Disable ICache write interface
@@ -284,6 +286,8 @@ class CoreExecute(config: CoreConfig) extends Module {
 
     val recover = Input(Bool())
 
+    val debug = Flipped(new DebugIO())
+
   })
 
   private val aluExecuteQueue =
@@ -321,6 +325,8 @@ class CoreExecute(config: CoreConfig) extends Module {
   dtlb.io.satp := io.satp
   dtlb.io.mstatus := io.mstatus
   dtlb.io.flush <> io.dTLBFlush
+  dtlb.io.debug.hit := false.B
+  // dtlb.io.debug <> io.debug
 
   // DCache
   dCache.io.outWriter <> io.smaWriter

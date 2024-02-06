@@ -14,6 +14,7 @@ import lltriscv.bus.SMAReaderIO
 import lltriscv.utils.ChiselUtils._
 import lltriscv.utils.CoreUtils._
 import lltriscv.utils.Sv32
+import lltriscv.core.debug.DebugIO
 
 /*
  * TLB (Translation Lookaside Buffer)
@@ -47,6 +48,8 @@ class TLB(depth: Int, data: Boolean) extends Module {
     val mstatus = Input(DataType.operation)
     // Flush request interface: Invalidate all entry
     val flush = Flipped(new FlushCacheIO())
+
+    val debug = Flipped(new DebugIO())
   })
 
   // TLB
@@ -77,7 +80,10 @@ class TLB(depth: Int, data: Boolean) extends Module {
     *   Inherited global field
     */
   private def alloc(pte: UInt, mPage: Bool, global: Bool) = {
-    // printf("TLB save: %d\n", pte)
+    when(io.debug.hit) {
+      printf("TLB save: %d\n", pte)
+    }
+
     incrVictim := true.B
     val victim = table(victimPtr)
     victim.vpn := io.request.vaddress(31, 12)
@@ -178,8 +184,10 @@ class TLB(depth: Int, data: Boolean) extends Module {
 
       grant.zip(table).foreach { case (granted, entry) =>
         when(granted) {
-          // printf("TLB Hit: vaddr= %x, paddr= %x, da= %d, uxwr = %d, v = %d\n", io.request.vaddress, io.request.paddress, entry.da, entry.uxwr, entry.v)
-          // printf("Check TLB da = %d, pc = %d, ac = %d\n", pteDACheck(entry.da), ptePrivilegeCheck(entry.uxwr), alignmentCheck(entry))
+          when(io.debug.hit) {
+            printf("TLB Hit: vaddr= %x, paddr= %x, da= %d, uxwr = %d, v = %d\n", io.request.vaddress, io.request.paddress, entry.da, entry.uxwr, entry.v)
+            printf("Check TLB da = %d, pc = %d, ac = %d\n", pteDACheck(entry.da), ptePrivilegeCheck(entry.uxwr), alignmentCheck(entry))
+          }
           when(entry.v && pteDACheck(entry.da) && ptePrivilegeCheck(entry.uxwr) && alignmentCheck(entry)) {
             // 34 -> 32
             io.request.paddress := Mux(
@@ -212,10 +220,12 @@ class TLB(depth: Int, data: Boolean) extends Module {
     io.sma.valid := true.B
     when(io.sma.ready) { // Finished
       when(!io.sma.error) {
-        // printf("Walk vpn1: addr = %d, pte = %d\n", io.sma.address, io.sma.data)
+        when(io.debug.hit) {
+          printf("Walk vpn1: addr = %d, pte = %d\n", io.sma.address, io.sma.data)
+        }
         val pte = io.sma.data
         vpn1Reg := pte // Save
-        when(pte(4, 2) === "b000".U) { // Next
+        when(pte(3, 1) === "b000".U) { // Next
           when(pte(0)) { // OK
             statusReg := Status.vpn0
           }.otherwise {
@@ -243,7 +253,9 @@ class TLB(depth: Int, data: Boolean) extends Module {
     when(io.sma.ready) { // Finished
       val pte = io.sma.data
       when(!io.sma.error) { // Leaf
-        // printf("Walk vpn0: addr = %d, pte = %d\n", io.sma.address, io.sma.data)
+        when(io.debug.hit) {
+          printf("Walk vpn0: addr = %d, pte = %d\n", io.sma.address, io.sma.data)
+        }
         alloc(pte, false.B, vpn1Reg(5))
         statusReg := Status.lookup // Return
       }.otherwise { // Memory error

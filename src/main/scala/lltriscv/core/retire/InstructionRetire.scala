@@ -133,7 +133,7 @@ class InstructionRetire(depth: Int) extends Module {
 
     io.retired.ready := true.B
 
-    when(entry.pc >= "h80400000".U) {
+    when(debugBreakpoint) {
       printf("Exception!!!! pc = %x, cause = %d,to = %x\n", entry.pc, entry.executeResult.exceptionCode, io.trap.handlerPC)
     }
   }
@@ -146,7 +146,9 @@ class InstructionRetire(depth: Int) extends Module {
     io.correctPC := io.trap.handlerPC
 
     io.retired.ready := true.B
-    printf("Interrupt!!!! pc = %x to= %x\n", entry.pc, io.trap.handlerPC)
+    when(debugBreakpoint) {
+      printf("Interrupt!!!! pc = %x to= %x\n", entry.pc, io.trap.handlerPC)
+    }
   }
 
   private def gotoRecoveryPath(entry: ROBTableEntry) = {
@@ -177,7 +179,7 @@ class InstructionRetire(depth: Int) extends Module {
 
     io.retired.ready := true.B
 
-    when(entry.pc >= "h80400000".U) {
+    when(debugBreakpoint) {
       printf(
         "xret !!!: pc = %x\n",
         entry.pc
@@ -210,7 +212,7 @@ class InstructionRetire(depth: Int) extends Module {
       io.predictorUpdate.entries(id).address := retireEntries(id).executeResult.real
     }
 
-    when(retireEntries(id).pc === "hc0002a44".U) {
+    when(retireEntries(id).pc === "hc019a528".U) {
       debugBreakpoint := true.B
     }
     when(debugBreakpoint) {
@@ -337,14 +339,18 @@ class InstructionRetire(depth: Int) extends Module {
 
       when(io.tlbFlush.empty) { // Finish
         statusReg := Status.retire
-        printf("Fench pc = %d\n", retireEntries(flushID).pc)
+        when(debugBreakpoint) {
+          printf("Fench pc = %d\n", retireEntries(flushID).pc)
+        }
         io.recover := true.B
         io.correctPC := retireEntries(flushID).executeResult.real
         io.retired.ready := true.B
       }
     }.otherwise {
       statusReg := Status.retire
-      printf("Fench pc = %d\n", retireEntries(flushID).pc)
+      when(debugBreakpoint) {
+        printf("Fench pc = %d\n", retireEntries(flushID).pc)
+      }
       io.recover := true.B
       io.correctPC := retireEntries(flushID).executeResult.real
       io.retired.ready := true.B
