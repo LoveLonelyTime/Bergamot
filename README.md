@@ -24,6 +24,8 @@ The Bergamot is a simple superscalar RV32GC RISC-V core written in the [Chisel](
 Its predecessor is the [LLTRISCV](https://github.com/LoveLonelyTime/LLTRISC-V) (5-stage pipeline RV32I RISC-V core).
 This project aims to develop a relatively simple and high-performance general-purpose RISC-V superscalar processor design, which can be used for teaching and research.
 
+![Arch](doc/arch.png)
+
 ### Instruction fetch
 
 Bergamot can concatenate two instruction-cache lines at a time, which enables C extensions.
