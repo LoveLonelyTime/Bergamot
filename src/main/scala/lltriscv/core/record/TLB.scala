@@ -93,6 +93,7 @@ class TLB(depth: Int, data: Boolean) extends Module {
     victim.uxwr := pte(4, 1)
     victim.v := pte(0)
     victim.mPage := mPage
+    victim.asid := io.satp(30, 22)
     victim.valid := true.B
   }
 

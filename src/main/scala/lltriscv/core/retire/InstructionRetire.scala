@@ -212,7 +212,7 @@ class InstructionRetire(depth: Int) extends Module {
       io.predictorUpdate.entries(id).address := retireEntries(id).executeResult.real
     }
 
-    when(retireEntries(id).pc === "hc019a528".U) {
+    when(retireEntries(id).pc === "hc00146b4".U) {
       debugBreakpoint := true.B
     }
     when(debugBreakpoint) {
