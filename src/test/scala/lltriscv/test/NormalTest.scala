@@ -1,4 +1,4 @@
-package lltriscv.test
+package bergamot.test
 
 import chisel3._
 import chiseltest._
@@ -6,25 +6,25 @@ import chiseltest._
 import org.scalatest.freespec.AnyFreeSpec
 import org.scalatest.flatspec.AnyFlatSpec
 
-import lltriscv.core.LLTRISCVCoreExq
-import lltriscv.core.CoreConfig
+import bergamot.core.BergamotCore
+import bergamot.core.CoreConfig
 
-import lltriscv.test.mock.FlatMemoryMock
-import lltriscv.test.mock.MemoryFileMock
-import lltriscv.test.mock.SMAMemoryMock
+import bergamot.test.mock.FlatMemoryMock
+import bergamot.test.mock.MemoryFileMock
+import bergamot.test.mock.SMAMemoryMock
 import java.io.File
-import lltriscv.test.mock.MemoryMock
-import lltriscv.peripheral.RAM
-import lltriscv.interconnect.AXIInterconnect
-import lltriscv.peripheral.ROM
+import bergamot.test.mock.MemoryMock
+import bergamot.peripheral.RAM
+import bergamot.interconnect.AXIInterconnect
+import bergamot.peripheral.ROM
 import java.io.RandomAccessFile
-import lltriscv.utils.ChiselUtils
-import lltriscv.peripheral.VirtualWriteHost
-import lltriscv.peripheral.VirtualUART
-import lltriscv.peripheral.MemoryHole
-import lltriscv.peripheral.VirtualRAM
-import lltriscv.peripheral.MachineTimer
-import lltriscv.core.debug.DebugIO
+import bergamot.utils.ChiselUtils
+import bergamot.peripheral.VirtualWriteHost
+import bergamot.peripheral.VirtualUART
+import bergamot.peripheral.MemoryHole
+import bergamot.peripheral.VirtualRAM
+import bergamot.peripheral.MachineTimer
+import bergamot.core.debug.DebugIO
 
 class NormalTest extends AnyFlatSpec with ChiselScalatestTester {
   // WriteVcdAnnotation
@@ -46,7 +46,7 @@ class NormalTest extends AnyFlatSpec with ChiselScalatestTester {
       val debug = new DebugIO()
     })
 
-    private val core = Module(new LLTRISCVCoreExq(config))
+    private val core = Module(new BergamotCore(config))
 
     private val interconnect = Module(
       new AXIInterconnect(

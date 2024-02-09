@@ -1,14 +1,14 @@
-package lltriscv.test.mock
+package bergamot.test.mock
 
 import chisel3._
 import chisel3.util._
-import lltriscv.bus.SMAReaderIO
+import bergamot.bus.SMAReaderIO
 import chiseltest._
-import lltriscv.utils.ChiselUtils
+import bergamot.utils.ChiselUtils
 import java.io.File
 import java.io.FileInputStream
-import lltriscv.bus.SMAWriterIO
-import lltriscv.core.execute.MemoryAccessLength
+import bergamot.bus.SMAWriterIO
+import bergamot.core.execute.MemoryAccessLength
 
 trait MemoryMock {
   def loadByte(addr: Int): Byte

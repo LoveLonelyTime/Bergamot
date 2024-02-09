@@ -1,17 +1,17 @@
-package lltriscv.test
+package bergamot.test
 
 import chisel3._
 import chiseltest._
 import org.scalatest.freespec.AnyFreeSpec
 
 import chisel3.util._
-import lltriscv.core.CoreConfig
-import lltriscv.core.LLTRISCVCoreExq
-import lltriscv.test.mock.FlatMemoryMock
-import lltriscv.test.mock.MemoryFileMock
+import bergamot.core.CoreConfig
+import bergamot.core.BergamotCore
+import bergamot.test.mock.FlatMemoryMock
+import bergamot.test.mock.MemoryFileMock
 import java.io.File
-import lltriscv.core.execute.MemoryAccessLength
-import lltriscv.utils.ChiselUtils
+import bergamot.core.execute.MemoryAccessLength
+import bergamot.utils.ChiselUtils
 
 /*
  * This test case is used to export Verilog files.
@@ -40,6 +40,6 @@ class ExportCoreTest extends AnyFreeSpec with ChiselScalatestTester {
     memoryAddress = "h80000000"
   )
   "Export core" in {
-    emitVerilog(new LLTRISCVCoreExq(config), Array("--target-dir", "generated"))
+    emitVerilog(new BergamotCore(config), Array("--target-dir", "generated"))
   }
 }

@@ -1,4 +1,4 @@
-package lltriscv.test.riscvtests
+package bergamot.test.riscvtests
 
 import chisel3._
 import chiseltest._
@@ -6,14 +6,14 @@ import chiseltest._
 import org.scalatest.freespec.AnyFreeSpec
 import org.scalatest.flatspec.AnyFlatSpec
 
-import lltriscv.core.LLTRISCVCoreExq
-import lltriscv.core.CoreConfig
+import bergamot.core.BergamotCore
+import bergamot.core.CoreConfig
 
-import lltriscv.test.mock.FlatMemoryMock
-import lltriscv.test.mock.MemoryFileMock
-import lltriscv.test.mock.SMAMemoryMock
+import bergamot.test.mock.FlatMemoryMock
+import bergamot.test.mock.MemoryFileMock
+import bergamot.test.mock.SMAMemoryMock
 import java.io.File
-import lltriscv.test.mock.MemoryMock
+import bergamot.test.mock.MemoryMock
 
 /*
  * The riscv-tests ISA rv32-p test suite
