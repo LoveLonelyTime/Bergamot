@@ -21,8 +21,9 @@ object ExecuteQueueType extends ChiselEnum {
    * memory: Memory access instructions
    * alu: ALU instructions
    * branch: Branch instructions
+   * float: FP instructions
    */
-  val none, memory, alu, branch = Value
+  val none, memory, alu, branch, float = Value
 }
 
 /** Execute queue enqueue interface

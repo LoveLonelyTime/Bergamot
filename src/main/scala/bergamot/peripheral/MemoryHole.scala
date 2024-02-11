@@ -9,6 +9,16 @@ import bergamot.utils.ChiselUtils._
 import bergamot.utils.CoreUtils._
 import bergamot.utils.ReadWriteSRAM
 
+/*
+ * Memory hole
+ *
+ * Copyright (C) 2024-2025 LoveLonelyTime
+ */
+
+/** Memory hole
+  *
+  * Fill memory with hole
+  */
 class MemoryHole extends Module {
   val io = IO(new Bundle {
     val axi = Flipped(new AXIMasterIO())

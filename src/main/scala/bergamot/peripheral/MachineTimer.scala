@@ -8,6 +8,26 @@ import bergamot.bus.AXIMasterIO
 import bergamot.utils.ChiselUtils._
 import bergamot.utils.CoreUtils._
 
+/*
+ * A basic machine timer
+ *
+ * CLINT specification
+ *
+ * Copyright (C) 2024-2025 LoveLonelyTime
+ */
+
+object MachineTimer {
+  val MTIMECMPL = "h4000".U
+  val MTIMECMPH = "h4004".U
+  val MTIMEL = "hbff8".U
+  val MTIMEH = "hbffc".U
+}
+
+/** Machine timer
+  *
+  * @param base
+  *   Base address
+  */
 class MachineTimer(base: String) extends Module {
   val io = IO(new Bundle {
     val axi = Flipped(new AXIMasterIO())
@@ -36,16 +56,16 @@ class MachineTimer(base: String) extends Module {
   io.axi.RRESP := 0.U
 
   switch(readAddressReg) {
-    is("h4000".U) { // mtimecmpl
+    is(MachineTimer.MTIMECMPL) { // mtimecmpl
       io.axi.RDATA := mtimecmpReg(31, 0)
     }
-    is("h4004".U) { // mtimecmph
+    is(MachineTimer.MTIMECMPH) { // mtimecmph
       io.axi.RDATA := mtimecmpReg(63, 32)
     }
-    is("hbff8".U) { // mtimel
+    is(MachineTimer.MTIMEL) { // mtimel
       io.axi.RDATA := mtimeReg(31, 0)
     }
-    is("hbffc".U) { // mtimeh
+    is(MachineTimer.MTIMEH) { // mtimeh
       io.axi.RDATA := mtimeReg(63, 32)
     }
   }
@@ -60,23 +80,23 @@ class MachineTimer(base: String) extends Module {
   when(io.axi.WVALID) {
     io.axi.WREADY := true.B
     val data = io.axi.WDATA
-    printf("Current time: %d\n", mtimeReg)
+    // printf("Current time: %d\n", mtimeReg)
     switch(writeAddressReg) {
-      is("h4000".U) { // mtimecmpl
+      is(MachineTimer.MTIMECMPL) { // mtimecmpl
         mtimecmpReg := mtimecmpReg(63, 32) ## data
-        printf("MTIMER: set mtimecmp = %d\n", mtimecmpReg(63, 32) ## data)
+        // printf("MTIMER: set mtimecmp = %d\n", mtimecmpReg(63, 32) ## data)
       }
-      is("h4004".U) { // mtimecmph
+      is(MachineTimer.MTIMECMPH) { // mtimecmph
         mtimecmpReg := data ## mtimecmpReg(31, 0)
-        printf("MTIMER: set mtimecmp = %d\n", data ## mtimecmpReg(31, 0))
+        // printf("MTIMER: set mtimecmp = %d\n", data ## mtimecmpReg(31, 0))
       }
-      is("hbff8".U) { // mtimel
+      is(MachineTimer.MTIMEL) { // mtimel
         mtimeReg := mtimeReg(63, 32) ## data
-        printf("MTIMER: set mtime = %d\n", mtimeReg(63, 32) ## data)
+        // printf("MTIMER: set mtime = %d\n", mtimeReg(63, 32) ## data)
       }
-      is("hbffc".U) { // mtimeh
+      is(MachineTimer.MTIMEH) { // mtimeh
         mtimeReg := data ## mtimeReg(31, 0)
-        printf("MTIMER: set mtime = %d\n", data ## mtimeReg(31, 0))
+        // printf("MTIMER: set mtime = %d\n", data ## mtimeReg(31, 0))
       }
     }
   }

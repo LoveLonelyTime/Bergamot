@@ -3,9 +3,9 @@ package bergamot.interconnect
 import chisel3._
 import chisel3.util._
 
+import bergamot.core._
 import bergamot.core.record.StoreQueueBypassIO
 import bergamot.core.execute.MemoryAccessLength
-import bergamot.core.DataType
 
 import bergamot.bus.SMAReaderIO
 
@@ -39,8 +39,10 @@ class SMAWithStoreQueueInterconnect extends Module {
   // Bypass - 32bits
   io.bypass.address := io.in.address
   private val data = Wire(Vec(4, DataType.aByte))
-  for (i <- 0 until 4)
-    data(i) := Mux(io.bypass.strobe(i), io.bypass.data.refByte(i), io.out.data.refByte(i))
+  for (i <- 0 until 4) {
+    val bypassVal = Mux(io.bypass.strobe(i), io.bypass.data, io.out.data)
+    data(i) := extractBits(CoreConstant.byteWidth)(bypassVal, i)
+  }
 
   io.in.data := data(3) ## data(2) ## data(1) ## data(0)
 }

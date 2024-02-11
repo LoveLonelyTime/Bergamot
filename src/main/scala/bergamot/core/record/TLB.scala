@@ -3,9 +3,9 @@ package bergamot.core.record
 import chisel3._
 import chisel3.util._
 
+import bergamot.core._
 import bergamot.core.execute.MemoryAccessLength
 import bergamot.core.execute.MemoryErrorCode
-import bergamot.core.DataType
 
 import bergamot.cache.FlushCacheIO
 
@@ -14,7 +14,6 @@ import bergamot.bus.SMAReaderIO
 import bergamot.utils.ChiselUtils._
 import bergamot.utils.CoreUtils._
 import bergamot.utils.Sv32
-import bergamot.core.debug.DebugIO
 
 /*
  * TLB (Translation Lookaside Buffer)
@@ -48,8 +47,6 @@ class TLB(depth: Int, data: Boolean) extends Module {
     val mstatus = Input(DataType.operation)
     // Flush request interface: Invalidate all entry
     val flush = Flipped(new FlushCacheIO())
-
-    val debug = Flipped(new DebugIO())
   })
 
   // TLB
@@ -80,10 +77,7 @@ class TLB(depth: Int, data: Boolean) extends Module {
     *   Inherited global field
     */
   private def alloc(pte: UInt, mPage: Bool, global: Bool) = {
-    when(io.debug.hit) {
-      printf("TLB save: %d\n", pte)
-    }
-
+    // printf("TLB save: %d\n", pte)
     incrVictim := true.B
     val victim = table(victimPtr)
     victim.vpn := io.request.vaddress(31, 12)
@@ -185,10 +179,8 @@ class TLB(depth: Int, data: Boolean) extends Module {
 
       grant.zip(table).foreach { case (granted, entry) =>
         when(granted) {
-          when(io.debug.hit) {
-            printf("TLB Hit: vaddr= %x, paddr= %x, da= %d, uxwr = %d, v = %d\n", io.request.vaddress, io.request.paddress, entry.da, entry.uxwr, entry.v)
-            printf("Check TLB da = %d, pc = %d, ac = %d\n", pteDACheck(entry.da), ptePrivilegeCheck(entry.uxwr), alignmentCheck(entry))
-          }
+          // printf("TLB Hit: vaddr= %x, paddr= %x, da= %d, uxwr = %d, v = %d\n", io.request.vaddress, io.request.paddress, entry.da, entry.uxwr, entry.v)
+          // printf("Check TLB da = %d, pc = %d, ac = %d\n", pteDACheck(entry.da), ptePrivilegeCheck(entry.uxwr), alignmentCheck(entry))
           when(entry.v && pteDACheck(entry.da) && ptePrivilegeCheck(entry.uxwr) && alignmentCheck(entry)) {
             // 34 -> 32
             io.request.paddress := Mux(
@@ -221,9 +213,7 @@ class TLB(depth: Int, data: Boolean) extends Module {
     io.sma.valid := true.B
     when(io.sma.ready) { // Finished
       when(!io.sma.error) {
-        when(io.debug.hit) {
-          printf("Walk vpn1: addr = %d, pte = %d\n", io.sma.address, io.sma.data)
-        }
+        // printf("Walk vpn1: addr = %d, pte = %d\n", io.sma.address, io.sma.data)
         val pte = io.sma.data
         vpn1Reg := pte // Save
         when(pte(3, 1) === "b000".U) { // Next
@@ -254,9 +244,7 @@ class TLB(depth: Int, data: Boolean) extends Module {
     when(io.sma.ready) { // Finished
       val pte = io.sma.data
       when(!io.sma.error) { // Leaf
-        when(io.debug.hit) {
-          printf("Walk vpn0: addr = %d, pte = %d\n", io.sma.address, io.sma.data)
-        }
+        // printf ("Walk vpn0: addr = %d, pte = %d\n", io.sma.address, io.sma.data)
         alloc(pte, false.B, vpn1Reg(5))
         statusReg := Status.lookup // Return
       }.otherwise { // Memory error

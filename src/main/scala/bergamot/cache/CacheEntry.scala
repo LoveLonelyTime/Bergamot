@@ -3,8 +3,7 @@ package bergamot.cache
 import chisel3._
 import chisel3.util._
 
-import bergamot.core.DataType
-import bergamot.core.CoreConstant
+import bergamot.core._
 
 /*
  * Cache entry

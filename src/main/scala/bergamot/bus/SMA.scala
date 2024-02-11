@@ -20,8 +20,8 @@ import bergamot.core.execute.MemoryAccessLength
 /** SMA specification
   */
 object SMASpec {
-  val addressWidth = 32 // Address width
-  val dataWidth = 32 // Data width
+  val addressWidth = 32
+  val dataWidth = 32
 }
 
 /** SMAReaderIO

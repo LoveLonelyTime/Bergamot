@@ -79,8 +79,26 @@ object InterruptsCode {
 /** Read and write register
   */
 trait ReadAndWriteRegister {
+
+  /** Read CSR register
+    *
+    * @return
+    *   value
+    */
   def read(): UInt
+
+  /** Write CSR register
+    *
+    * @param data
+    *   value
+    */
   def write(data: UInt): Unit
+
+  /** CSR register guard
+    *
+    * @return
+    *   Access prohibited
+    */
   def guard(): Bool
 
   val value = read()

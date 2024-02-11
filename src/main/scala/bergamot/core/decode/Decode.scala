@@ -6,10 +6,10 @@ import chisel3.util._
 import bergamot.core._
 import bergamot.core.broadcast.DataBroadcastIO
 import bergamot.core.record.RegisterMappingIO
-import bergamot.core.execute.ExecuteQueueEnqueueIO
 import bergamot.core.record.ROBTableWriteIO
 import bergamot.core.execute.MemoryErrorCode
 import bergamot.core.execute.ExecuteQueueType
+import bergamot.core.execute.ExecuteQueueEnqueueIO
 
 import bergamot.utils.CoreUtils._
 import bergamot.utils.ChiselUtils._
@@ -66,7 +66,7 @@ class Decode(executeQueueWidth: Int) extends Module {
 
 /** Decode stage
   *
-  * Split according to instruction format
+  * Decode according to instruction format
   *
   * Single cycle stage
   */
@@ -95,110 +95,109 @@ class DecodeStage extends Module {
     out.opcode := in.instruction(6, 0)
 
     // Instruction Type
-    val instructionType = WireInit(InstructionType.UK)
+    out.instructionType := WireInit(InstructionType.UNK)
     switch(in.instruction(6, 2)) {
       // I: lui
       is("b01101".U) {
-        instructionType := InstructionType.U
+        out.instructionType := InstructionType.U
       }
       // I: auipc
       is("b00101".U) {
-        instructionType := InstructionType.U
+        out.instructionType := InstructionType.U
       }
       // I: beq, bne, blt, bge, bltu, bgeu
       is("b11000".U) {
-        instructionType := InstructionType.B
+        out.instructionType := InstructionType.B
       }
       // I: sb, sh, sw
       is("b01000".U) {
-        instructionType := InstructionType.S
+        out.instructionType := InstructionType.S
       }
       // I: add, sub, sll, slt, sltu, xor, srl, sra, or, and
       // M: mul, mulh, mulhsu, mulhu, div, divu, rem, remu
       is("b01100".U) {
-        instructionType := InstructionType.R
+        out.instructionType := InstructionType.R
       }
       // I: jal
       is("b11011".U) {
-        instructionType := InstructionType.J
+        out.instructionType := InstructionType.J
       }
       // I: lb, lh, lw, lbu, lhu
       is("b00000".U) {
-        instructionType := InstructionType.I
+        out.instructionType := InstructionType.I
       }
       // I: addi, slti, sltiu, xori, ori, andi, slli, srli, srai
       is("b00100".U) {
-        instructionType := InstructionType.I
+        out.instructionType := InstructionType.I
       }
       // I: jalr
       is("b11001".U) {
-        instructionType := InstructionType.I
+        out.instructionType := InstructionType.I
       }
       // Zicsr: csrrw, csrrs, csrrc, csrrwi, csrrsi, csrrci
       // I: ecall, ebreak, wfi, sfence.vma
       // M-Level: mret
       // S-Level: sret
       is("b11100".U) {
-        instructionType := InstructionType.I
+        out.instructionType := InstructionType.I
       }
       // I: fence
       // Zifencei: fence.i
       is("b00011".U) {
-        instructionType := InstructionType.I
+        out.instructionType := InstructionType.I
       }
       // A: lr, sc, amoswap, amoadd, amoxor, amoand, amoor, amomin, amomax, amominu, amomaxu
       is("b01011".U) {
-        instructionType := InstructionType.R
+        out.instructionType := InstructionType.R
       }
     }
+
     when(in.instruction(1, 0) =/= "b11".U) { // Identification code detection
-      instructionType := InstructionType.UK
+      out.instructionType := InstructionType.UNK
     }
-    out.instructionType := instructionType
 
     // rs1Tozimm (csrrwi, csrrsi, csrrci)
     // zimm can not occupy the position of rs1
     val rs1Tozimm = in.instruction(6, 2) === "b11100".U && in.instruction(14)
 
     // rd: R/I/U/J
-    when(instructionType in (InstructionType.R, InstructionType.I, InstructionType.U, InstructionType.J)) {
+    out.rd := 0.U
+    when(out.instructionType in (InstructionType.R, InstructionType.I, InstructionType.U, InstructionType.J)) {
       out.rd := in.instruction(11, 7)
-    }.otherwise {
-      out.rd := 0.U
     }
 
     // rs1(zimm): R/I/S/B
-    when(instructionType in (InstructionType.R, InstructionType.I, InstructionType.S, InstructionType.B)) {
-      out.zimm := Mux(rs1Tozimm, in.instruction(19, 15), 0.U)
-      out.rs1 := Mux(rs1Tozimm, 0.U, in.instruction(19, 15))
-    }.otherwise {
-      out.zimm := 0.U
-      out.rs1 := 0.U
+    out.zimm := 0.U
+    out.rs1 := 0.U
+    when(out.instructionType in (InstructionType.R, InstructionType.I, InstructionType.S, InstructionType.B)) {
+      val rs1 = in.instruction(19, 15)
+      when(rs1Tozimm) {
+        out.zimm := rs1
+      }.otherwise {
+        out.rs1 := rs1
+      }
     }
 
     // rs2: R/S/B
-    when(instructionType in (InstructionType.R, InstructionType.S, InstructionType.B)) {
+    out.rs2 := 0.U
+    when(out.instructionType in (InstructionType.R, InstructionType.S, InstructionType.B)) {
       out.rs2 := in.instruction(24, 20)
-    }.otherwise {
-      out.rs2 := 0.U
     }
 
     // func3: R/I/S/B
-    when(instructionType in (InstructionType.R, InstructionType.I, InstructionType.S, InstructionType.B)) {
+    out.func3 := 0.U
+    when(out.instructionType in (InstructionType.R, InstructionType.I, InstructionType.S, InstructionType.B)) {
       out.func3 := in.instruction(14, 12)
-    }.otherwise {
-      out.func3 := 0.U
     }
 
     // func7: R/I (srli,srai)
-    when(instructionType in (InstructionType.R, InstructionType.I)) {
+    out.func7 := 0.U
+    when(out.instructionType in (InstructionType.R, InstructionType.I)) {
       out.func7 := in.instruction(31, 25)
-    }.otherwise {
-      out.func7 := 0.U
     }
 
     // imm decode table
-    out.imm := MuxLookup(instructionType, 0.U)(
+    out.imm := MuxLookup(out.instructionType, 0.U)(
       Seq(
         InstructionType.I -> 0.U(20.W) ## in.instruction(31, 20),
         InstructionType.S -> 0.U(20.W) ## in.instruction(31, 25) ## in.instruction(11, 7),
@@ -212,9 +211,9 @@ class DecodeStage extends Module {
     out.executeQueue := MuxCase(
       ExecuteQueueType.alu, // Default ALU
       Seq(
-        (in.error =/= MemoryErrorCode.none || instructionType === InstructionType.UK) -> ExecuteQueueType.alu, // Exception handler
-        ((out.opcode(6, 2) in ("b11011".U, "b11001".U)) || instructionType === InstructionType.B) -> ExecuteQueueType.branch, // jal, jalr, branch
-        ((out.opcode(6, 2) in ("b00000".U, "b01011".U)) || instructionType === InstructionType.S) -> ExecuteQueueType.memory // load, store, lr, sc, amo
+        (in.error =/= MemoryErrorCode.none || out.instructionType === InstructionType.UNK) -> ExecuteQueueType.alu, // Exception handler
+        ((out.opcode(6, 2) in ("b11011".U, "b11001".U)) || out.instructionType === InstructionType.B) -> ExecuteQueueType.branch, // jal, jalr, branch
+        ((out.opcode(6, 2) in ("b00000".U, "b01011".U)) || out.instructionType === InstructionType.S) -> ExecuteQueueType.memory // load, store, lr, sc, amo
       )
     )
 

@@ -7,6 +7,17 @@ import bergamot.bus.AXIMasterIO
 
 import bergamot.utils.ChiselUtils._
 
+/*
+ * Verilator virtual RAM
+ *
+ * Copyright (C) 2024-2025 LoveLonelyTime
+ */
+
+/** Virtual RAM
+  *
+  * @param base
+  *   Base address
+  */
 class VirtualRAM(base: String) extends Module {
   val io = IO(new Bundle {
     val axi = Flipped(new AXIMasterIO())

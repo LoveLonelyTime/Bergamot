@@ -2,51 +2,55 @@ package bergamot.core
 
 import chisel3._
 import chisel3.util._
+
 import bergamot.core.fetch.Fetch
+import bergamot.core.fetch.BranchPredictorUpdateIO
 import bergamot.core.decode.Decode
 import bergamot.core.record.TLB
 import bergamot.core.record.RegisterMappingTable
+import bergamot.core.record.ROBTableWriteIO
+import bergamot.core.record.PrivilegeType
+import bergamot.core.record.RegisterUpdateIO
+import bergamot.core.record.CSRsReadIO
+import bergamot.core.record.StoreQueue
+import bergamot.core.record.StoreQueueMemoryWriter
+import bergamot.core.record.StoreQueueRetireIO
+import bergamot.core.record.CSRs
+import bergamot.core.record.ROB
+import bergamot.core.broadcast.RoundRobinBroadcaster
 import bergamot.core.broadcast.DataBroadcastIO
 import bergamot.core.execute.ExecuteQueueEnqueueIO
-import bergamot.core.record.ROBTableWriteIO
-import bergamot.bus.SMAReaderIO
-import bergamot.interconnect.SMA2ReaderInterconnect
-import bergamot.core.record.PrivilegeType
-import bergamot.cache.FlushCacheIO
-import bergamot.core.record.RegisterUpdateIO
 import bergamot.core.execute.InOrderedExecuteQueue
 import bergamot.core.execute.ExecuteQueueType
 import bergamot.core.execute.Branch
 import bergamot.core.execute.Memory
 import bergamot.core.execute.ALU
-import bergamot.core.record.CSRsReadIO
-import bergamot.cache.Serial2Flusher
-import bergamot.bus.SMAWriterIO
-import bergamot.core.record.StoreQueue
-import bergamot.core.record.StoreQueueMemoryWriter
-import bergamot.interconnect.SMAWithStoreQueueInterconnect
-import bergamot.core.record.StoreQueueRetireIO
 import bergamot.core.execute.ExecuteResultEntry
-import bergamot.core.broadcast.RoundRobinBroadcaster
-import bergamot.core.retire.InstructionRetire
-import bergamot.core.record.CSRs
-import bergamot.core.record.ROB
-import bergamot.cache.Parallel2Flusher
 import bergamot.core.execute.OutOfOrderedExecuteQueue
-import bergamot.core.fetch.BranchPredictorUpdateIO
 import bergamot.core.execute.LoadReservationUpdateIO
+import bergamot.core.retire.InstructionRetire
+import bergamot.core.debug.DebugIO
+
+import bergamot.bus.SMAReaderIO
+import bergamot.bus.SMAWriterIO
+import bergamot.bus.AXIMaster
+import bergamot.bus.AXIMasterIO
+
+import bergamot.interconnect.SMA2ReaderInterconnect
+import bergamot.interconnect.SMAWithStoreQueueInterconnect
+import bergamot.interconnect.CacheLineRequest2Interconnect
+import bergamot.interconnect.SkipCacheSMAReaderInterconnect
+
+import bergamot.cache.FlushCacheIO
+import bergamot.cache.Serial2Flusher
+import bergamot.cache.Parallel2Flusher
 import bergamot.cache.SetCache
 import bergamot.cache.SMA2CacheLineRequest
+import bergamot.cache.CacheLineRequest2SMA
+import bergamot.cache.CacheLineRequestIO
 
 import bergamot.utils.ChiselUtils._
 import bergamot.utils.CoreUtils._
-import bergamot.interconnect.CacheLineRequest2Interconnect
-import bergamot.cache.CacheLineRequestIO
-import bergamot.bus.AXIMaster
-import bergamot.cache.CacheLineRequest2SMA
-import bergamot.bus.AXIMasterIO
-import bergamot.interconnect.SkipCacheSMAReaderInterconnect
-import bergamot.core.debug.DebugIO
 
 /*
  * LLT RISC-V Core Exquisite integration
@@ -92,18 +96,21 @@ object CoreConfig {
   )
 }
 
-/** bergamotCoreExq
+/** Bergamot core
   *
   * @param config
   *   Core config
   */
 class BergamotCore(config: CoreConfig) extends Module {
   val io = IO(new Bundle {
+    // AXI
     val axi = new AXIMasterIO()
 
+    // Timer
     val mtime = Input(UInt(64.W))
     val mtimeIRQ = Input(Bool())
 
+    // Debug
     val debug = new DebugIO()
   })
 
@@ -143,7 +150,6 @@ class BergamotCore(config: CoreConfig) extends Module {
   coreExecute.io.mstatus := coreBackend.io.mstatus
   coreExecute.io.satp := coreBackend.io.satp
   coreExecute.io.recover := coreBackend.io.recover
-  coreExecute.io.debug <> coreBackend.io.debug
 
   // CoreBackend
   coreBackend.io.deqs <> coreExecute.io.deqs
@@ -219,7 +225,6 @@ class CoreFrontend(config: CoreConfig) extends Module {
   itlb.io.satp := io.satp
   itlb.io.mstatus := io.mstatus
   itlb.io.flush <> io.iTLBFlush
-  itlb.io.debug.hit := false.B
 
   // ICache
   // Disable ICache write interface
@@ -284,9 +289,6 @@ class CoreExecute(config: CoreConfig) extends Module {
     val retire = Flipped(new StoreQueueRetireIO())
 
     val recover = Input(Bool())
-
-    val debug = Flipped(new DebugIO())
-
   })
 
   private val aluExecuteQueue =
@@ -324,8 +326,6 @@ class CoreExecute(config: CoreConfig) extends Module {
   dtlb.io.satp := io.satp
   dtlb.io.mstatus := io.mstatus
   dtlb.io.flush <> io.dTLBFlush
-  dtlb.io.debug.hit := false.B
-  // dtlb.io.debug <> io.debug
 
   // DCache
   dCache.io.outWriter <> io.smaWriter

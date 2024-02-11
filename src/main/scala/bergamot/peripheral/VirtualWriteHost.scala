@@ -9,6 +9,17 @@ import bergamot.utils.ChiselUtils._
 import bergamot.utils.CoreUtils._
 import bergamot.utils.DoublePortSRAM
 
+/*
+ * Verilator virtual write host (riscv-tests)
+ *
+ * Copyright (C) 2024-2025 LoveLonelyTime
+ */
+
+/** Virtual write host
+  *
+  * @param base
+  *   Base address
+  */
 class VirtualWriteHost(base: String) extends Module {
   val io = IO(new Bundle {
     val axi = Flipped(new AXIMasterIO())

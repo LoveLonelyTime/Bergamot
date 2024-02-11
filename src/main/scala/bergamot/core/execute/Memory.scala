@@ -255,7 +255,8 @@ class MemoryTLBStage extends Module {
     io.dtlb.valid := true.B
     io.dtlb.vaddress := inReg.vaddress
     io.dtlb.write := (inReg.op in MemoryOperationType.writeValues)
-    when(io.dtlb.ready) {
+
+    when(io.dtlb.ready) { // OK
       error := io.dtlb.error
       paddress := io.dtlb.paddress
       statusReg := Status.idle
@@ -317,6 +318,7 @@ class MemoryReadWriteStage extends Module {
   private val readResult = RegInit(DataType.operation.zeroAsUInt)
   private val readError = RegInit(false.B)
   private val allocID = RegInit(DataType.receipt.zeroAsUInt)
+
   private def scSuccess(vaddress: UInt) = vaddress === loadReservation.address && loadReservation.valid
 
   io.in.ready := statusReg === Status.idle && io.out.ready // Idle
@@ -364,7 +366,8 @@ class MemoryReadWriteStage extends Module {
       readError := io.sma.error
       statusReg := Status.idle
 
-      when(!readError && inReg.valid && !io.recover) {
+      // Do it need to go to the next step?
+      when(!io.sma.error && inReg.valid && !io.recover) {
         when(inReg.op === MemoryOperationType.lr) { // lr
           loadReservation.address := inReg.vaddress
           loadReservation.valid := true.B
@@ -441,7 +444,7 @@ class MemoryReadWriteStage extends Module {
   }
 
   // Alloc ID
-  when(inReg.op === MemoryOperationType.sc) { // Advance judgment
+  when(inReg.op === MemoryOperationType.sc) { // SC
     when(scSuccess(inReg.vaddress)) {
       io.out.bits.resultMemory(allocID)
     }

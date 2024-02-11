@@ -30,9 +30,13 @@ object DataType {
   def ppn20 = UInt(20.W) // 20-bits physical page number
   def ppn22 = UInt(22.W) // 22-bits physical page number
   def half = UInt(16.W) // half word
+  def double = UInt(64.W) // double word
 }
 
 object CoreConstant {
+  val byteWidth = 8
+  val halfWidth = 16
+  val wordWidth = 32
   val XLEN = 32
   val instructionLength = 4
   val compressInstructionLength = 2

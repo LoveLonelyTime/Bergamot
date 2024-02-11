@@ -9,18 +9,18 @@ import bergamot.core.record.RegisterUpdateIO
 import bergamot.core.record.CSRsWriteIO
 import bergamot.core.record.StoreQueueRetireIO
 import bergamot.core.record.ROBTableEntry
+import bergamot.core.record.TrapRequestIO
+import bergamot.core.record.MonitorIO
 import bergamot.core.fetch.BranchPredictorUpdateIO
 import bergamot.core.execute.LoadReservationUpdateIO
 import bergamot.core.execute.LoadReservationEntry
 import bergamot.core.execute.ExecuteResultEntry
-import bergamot.core.record.TrapRequestIO
+import bergamot.core.debug.DebugIO
 
 import bergamot.cache.FlushCacheIO
 
 import bergamot.utils.CoreUtils._
 import bergamot.utils.ChiselUtils._
-import bergamot.core.record.MonitorIO
-import bergamot.core.debug.DebugIO
 
 /*
  * Instruction retire
@@ -133,9 +133,9 @@ class InstructionRetire(depth: Int) extends Module {
 
     io.retired.ready := true.B
 
-    when(debugBreakpoint) {
-      printf("Exception!!!! pc = %x, cause = %d,to = %x\n", entry.pc, entry.executeResult.exceptionCode, io.trap.handlerPC)
-    }
+    // when(debugBreakpoint) {
+    //   printf("Exception!!!! pc = %x, cause = %d,to = %x\n", entry.pc, entry.executeResult.exceptionCode, io.trap.handlerPC)
+    // }
   }
 
   private def gotoInterruptHandler(entry: ROBTableEntry) = {
@@ -146,9 +146,9 @@ class InstructionRetire(depth: Int) extends Module {
     io.correctPC := io.trap.handlerPC
 
     io.retired.ready := true.B
-    when(debugBreakpoint) {
-      printf("Interrupt!!!! pc = %x to= %x\n", entry.pc, io.trap.handlerPC)
-    }
+    // when(debugBreakpoint) {
+    //   printf("Interrupt!!!! pc = %x to= %x\n", entry.pc, io.trap.handlerPC)
+    // }
   }
 
   private def gotoRecoveryPath(entry: ROBTableEntry) = {
@@ -157,14 +157,14 @@ class InstructionRetire(depth: Int) extends Module {
 
     io.retired.ready := true.B
 
-    when(debugBreakpoint) {
-      printf(
-        "spec violate!!!: pc = %x, sepc = %x, real = %x\n",
-        entry.pc,
-        entry.spec,
-        entry.executeResult.real
-      )
-    }
+    // when(debugBreakpoint) {
+    //   printf(
+    //     "spec violate!!!: pc = %x, sepc = %x, real = %x\n",
+    //     entry.pc,
+    //     entry.spec,
+    //     entry.executeResult.real
+    //   )
+    // }
   }
 
   private def gotoXRetPath(entry: ROBTableEntry) = {
@@ -179,12 +179,12 @@ class InstructionRetire(depth: Int) extends Module {
 
     io.retired.ready := true.B
 
-    when(debugBreakpoint) {
-      printf(
-        "xret !!!: pc = %x\n",
-        entry.pc
-      )
-    }
+    // when(debugBreakpoint) {
+    //   printf(
+    //     "xret !!!: pc = %x\n",
+    //     entry.pc
+    //   )
+    // }
   }
 
   private def gotoCSRPath(entry: ROBTableEntry) = {
@@ -212,17 +212,17 @@ class InstructionRetire(depth: Int) extends Module {
       io.predictorUpdate.entries(id).address := retireEntries(id).executeResult.real
     }
 
-    when(retireEntries(id).pc === "hc00146b4".U) {
-      debugBreakpoint := true.B
-    }
-    when(debugBreakpoint) {
-      printf(
-        "retired instruction: pc = %x , r = %x, v = %d\n",
-        retireEntries(id).pc,
-        retireEntries(id).executeResult.result,
-        retireEntries(id).valid
-      )
-    }
+    // when(retireEntries(id).pc === "hc00146b4".U) {
+    //   debugBreakpoint := true.B
+    // }
+    // when(debugBreakpoint) {
+    //   printf(
+    //     "retired instruction: pc = %x , r = %x, v = %d\n",
+    //     retireEntries(id).pc,
+    //     retireEntries(id).executeResult.result,
+    //     retireEntries(id).valid
+    //   )
+    // }
   }
 
   private def retireStoreQueue(id: Int) = {
@@ -339,18 +339,18 @@ class InstructionRetire(depth: Int) extends Module {
 
       when(io.tlbFlush.empty) { // Finish
         statusReg := Status.retire
-        when(debugBreakpoint) {
-          printf("Fench pc = %d\n", retireEntries(flushID).pc)
-        }
+        // when(debugBreakpoint) {
+        //   printf("Fench pc = %d\n", retireEntries(flushID).pc)
+        // }
         io.recover := true.B
         io.correctPC := retireEntries(flushID).executeResult.real
         io.retired.ready := true.B
       }
     }.otherwise {
       statusReg := Status.retire
-      when(debugBreakpoint) {
-        printf("Fench pc = %d\n", retireEntries(flushID).pc)
-      }
+      // when(debugBreakpoint) {
+      //   printf("Fench pc = %d\n", retireEntries(flushID).pc)
+      // }
       io.recover := true.B
       io.correctPC := retireEntries(flushID).executeResult.real
       io.retired.ready := true.B

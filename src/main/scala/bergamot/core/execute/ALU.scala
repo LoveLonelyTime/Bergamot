@@ -202,9 +202,10 @@ class ALUDecodeStage extends Module {
          * Special protection is in CSRs
          * But, general protection is here
          */
+        // Treat csrrs/csrrc 0 as a read operation
         io.out.bits.csrError :=
           io.csr.error || // Special protection
-            ((io.out.bits.op2 =/= 0.U || io.out.bits.op === ALUOperationType.csrrw) && inReg.imm(11, 10) === "b11".U) || // Read-only violate
+            ((io.out.bits.op2 =/= 0.U || io.out.bits.op === ALUOperationType.csrrw) && inReg.imm(11, 10) === "b11".U) || // Read-only violation
             (io.privilege === PrivilegeType.S && inReg.imm(9, 8) === "b11".U) || (io.privilege === PrivilegeType.U && inReg.imm(9, 8) =/= "b00".U) // Unauthorized access
       }.otherwise { // General I
         io.out.bits.op1 := inReg.rs1.receipt
@@ -265,6 +266,7 @@ class ALUExecuteStage extends Module {
   // Execute logic
   io.out.bits := new ExecuteResultEntry().zero
   switch(inReg.op) {
+    // ALU
     is(ALUOperationType.add) {
       io.out.bits.result := inReg.op1 + inReg.op2
     }
@@ -319,6 +321,8 @@ class ALUExecuteStage extends Module {
     is(ALUOperationType.remu) {
       io.out.bits.result := Mux(inReg.op2 === 0.U, inReg.op1, inReg.op1 % inReg.op2)
     }
+
+    // CSR
     is(ALUOperationType.csrrw) {
       io.out.bits.result := inReg.op1
       io.out.bits.resultCSR(inReg.csrAddress, inReg.op2)
@@ -326,7 +330,7 @@ class ALUExecuteStage extends Module {
     is(ALUOperationType.csrrs) {
       io.out.bits.result := inReg.op1
       // When inReg.op2 === 0, it is a read operation
-      when(inReg.op2 =/= 0.U) {
+      when(inReg.op2 =/= 0.U) { // Avoid unnecessary flushing of the pipeline
         io.out.bits.resultCSR(inReg.csrAddress, inReg.op1 | inReg.op2)
       }
     }
@@ -336,6 +340,8 @@ class ALUExecuteStage extends Module {
         io.out.bits.resultCSR(inReg.csrAddress, inReg.op1 & ~inReg.op2)
       }
     }
+
+    // ebreak/env
     is(ALUOperationType.ebreak) {
       io.out.bits.triggerException(ExceptionCode.breakpoint.U)
     }
@@ -347,6 +353,7 @@ class ALUExecuteStage extends Module {
       }
     }
 
+    // xret
     is(ALUOperationType.sret) {
       when((io.privilege === PrivilegeType.S && !io.mstatus(22)) || io.privilege === PrivilegeType.M) { // TSR OK
         io.out.bits.sret := true.B
@@ -363,6 +370,7 @@ class ALUExecuteStage extends Module {
       }
     }
 
+    // fence
     is(ALUOperationType.fence) {
       when(inReg.op2(4)) { // PW
         // Visible to device
@@ -387,6 +395,7 @@ class ALUExecuteStage extends Module {
       }
     }
 
+    // Illegal instruction
     is(ALUOperationType.undefined) {
       io.out.bits.triggerException(ExceptionCode.illegalInstruction.U)
     }

@@ -3,6 +3,7 @@ package bergamot.core.record
 import chisel3._
 import chisel3.util._
 
+import bergamot.core._
 import bergamot.core.execute.MemoryAccessLength
 
 import bergamot.bus.SMAWriterIO
@@ -11,7 +12,6 @@ import bergamot.cache.FlushCacheIO
 
 import bergamot.utils.CoreUtils._
 import bergamot.utils.ChiselUtils._
-import bergamot.core.DataType
 
 /*
  * Store queue

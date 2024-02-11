@@ -33,20 +33,20 @@ class CSRs extends Module {
     val privilege = Output(PrivilegeType()) // Current core privilege
     val mstatus = Output(DataType.operation)
     val satp = Output(DataType.operation)
-
+    // External drive
     val monitor = Flipped(new MonitorIO())
-
-    val mtime = Input(UInt(64.W))
+    val mtime = Input(DataType.double)
     val mtimeIRQ = Input(Bool())
   })
 
-  // Registers
-  private val coreRegister = new CoreRegister()
+  // Register groups
+  private val coreReg = new CoreRegister()
   private val statusReg = new StatusRegister()
   private val exceptionReg = new ExceptionRegister()
   private val interruptsReg = new InterruptsRegister(io.mtimeIRQ, false.B, false.B, false.B)
   private val virtualReg = new VirtualRegister(statusReg.mstatus.value(20), statusReg.privilege)
-  private val monitorRegister = new MonitorRegister(statusReg.privilege, io.monitor.instret, io.mtime)
+  private val monitorReg = new MonitorRegister(statusReg.privilege, io.monitor.instret, io.mtime)
+  private val pmpReg = new PMPRegister()
 
   // Fixed output
   io.satp := virtualReg.satp.value
@@ -54,51 +54,60 @@ class CSRs extends Module {
   io.mstatus := statusReg.mstatus.value
 
   // CSR mapping table
+
   private val csrMappingTable = Seq(
     // Unprivileged
-    "hc00".U -> monitorRegister.cycle,
-    "hc01".U -> monitorRegister.time,
-    "hc02".U -> monitorRegister.instret,
-    "hc80".U -> monitorRegister.cycleh,
-    "hc81".U -> monitorRegister.timeh,
-    "hc82".U -> monitorRegister.instreth,
+    "hc00".U -> monitorReg.cycle,
+    "hc01".U -> monitorReg.time,
+    "hc02".U -> monitorReg.instret,
+    "hc80".U -> monitorReg.cycleh,
+    "hc81".U -> monitorReg.timeh,
+    "hc82".U -> monitorReg.instreth,
 
     // S-Level
     "h100".U -> statusReg.sstatus,
     "h104".U -> interruptsReg.sie,
     "h105".U -> exceptionReg.stvec,
-    "h106".U -> monitorRegister.scounteren,
+    "h106".U -> monitorReg.scounteren,
     "h140".U -> exceptionReg.sscratch,
     "h141".U -> exceptionReg.sepc,
     "h142".U -> exceptionReg.scause,
     "h143".U -> exceptionReg.stval,
     "h144".U -> interruptsReg.sip,
     "h180".U -> virtualReg.satp,
+
     // M-Level
     "h300".U -> statusReg.mstatus,
-    "h301".U -> coreRegister.misa,
+    "h301".U -> coreReg.misa,
     "h302".U -> exceptionReg.medeleg,
     "h303".U -> interruptsReg.mideleg,
     "h304".U -> interruptsReg.mie,
     "h305".U -> exceptionReg.mtvec,
-    "h306".U -> monitorRegister.mcounteren,
+    "h306".U -> monitorReg.mcounteren,
     "h310".U -> statusReg.mstatush,
-    "h320".U -> monitorRegister.mcountinhibit,
+    "h320".U -> monitorReg.mcountinhibit,
     "h340".U -> exceptionReg.mscratch,
     "h341".U -> exceptionReg.mepc,
     "h342".U -> exceptionReg.mcause,
     "h343".U -> exceptionReg.mtval,
     "h344".U -> interruptsReg.mip,
-    "hb00".U -> monitorRegister.mcycle,
-    "hb02".U -> monitorRegister.minstret,
-    "hb80".U -> monitorRegister.mcycleh,
-    "hb82".U -> monitorRegister.minstreth,
-    "hf11".U -> coreRegister.mvendorid,
-    "hf12".U -> coreRegister.marchid,
-    "hf13".U -> coreRegister.mimpid,
-    "hf14".U -> coreRegister.mhartid,
-    "h744".U -> ReadAndWriteRegister(() => 0.U)
-  )
+    "hb00".U -> monitorReg.mcycle,
+    "hb02".U -> monitorReg.minstret,
+    "hb80".U -> monitorReg.mcycleh,
+    "hb82".U -> monitorReg.minstreth,
+    "hf11".U -> coreReg.mvendorid,
+    "hf12".U -> coreReg.marchid,
+    "hf13".U -> coreReg.mimpid,
+    "hf14".U -> coreReg.mhartid,
+
+    // Unsupported but reserved registers
+    "h744".U -> ReadAndWriteRegister(() => 0.U) // mnstatus
+  ) ++ monitorReg.mhpmcounters ++ // HPM
+    monitorReg.mhpmcountersh ++
+    monitorReg.mhpmevents ++
+    monitorReg.hpmcounters ++
+    monitorReg.hpmcountersh ++
+    pmpReg.pmps // PMP
 
   // Read logic
   io.read.error := true.B
@@ -110,11 +119,6 @@ class CSRs extends Module {
       io.read.data := item._2.value
     }
   }
-  // Unimplemented PMP
-  when(io.read.address(11, 4) in ("h3A".U, "h3B".U, "h3C".U, "h3D".U, "h3E".U)) {
-    io.read.error := false.B
-    io.read.data := 0.U
-  }
 
   // Write logic
   csrMappingTable.foreach { item =>
@@ -123,12 +127,18 @@ class CSRs extends Module {
     }
   }
 
+  // CLINT
   io.trap.handlerPC := 0.U
   // Interrupts
   io.trap.interruptPending := false.B
   val pendingInterruptCode = WireInit(DataType.exceptionCode.zeroAsUInt)
   switch(statusReg.privilege) {
     is(PrivilegeType.M) {
+      /* Conditions:
+       * 1. mie and mip is set
+       * 2. mideleg is reset (Do not handle delegated interrupts in M-Level)
+       * 3. MIE is set
+       */
       val arbitrationList =
         Seq(
           InterruptsCode.machineExternalInterrupt,
@@ -146,7 +156,15 @@ class CSRs extends Module {
         }
       }
     }
+
     is(PrivilegeType.S) {
+      /* Conditions for M-Level interrupts:
+       * 1. mie and mip is set (M-Level interrupts cannot be masked)
+       *
+       * Conditions for S-Level interrupts:
+       * 1. sie and sip is set
+       * 2. SIE is set
+       */
       val machineInterrupts = Seq(
         InterruptsCode.machineExternalInterrupt,
         InterruptsCode.machineSoftwareInterrupt,
@@ -167,7 +185,9 @@ class CSRs extends Module {
         }
       }
     }
+
     is(PrivilegeType.U) {
+      // Any interrupts cannot be masked
       val arbitrationList =
         Seq(
           InterruptsCode.machineExternalInterrupt,
@@ -229,9 +249,13 @@ class CSRs extends Module {
   * Include: mie, mip, sie, sip, mideleg
   *
   * @param MTIPFlag
+  *   MTIP
   * @param MEIPFlag
+  *   MEIP
   * @param STIPFlag
+  *   STIP
   * @param SEIPFlag
+  *   SEIP
   */
 class InterruptsRegister(
     MTIPFlag: Bool,
@@ -302,6 +326,15 @@ class InterruptsRegister(
   )
 }
 
+/** Virtual registers
+  *
+  * Include: satp
+  *
+  * @param TVM
+  *   TVM
+  * @param privilege
+  *   Privilege
+  */
 class VirtualRegister(
     TVM: Bool,
     privilege: PrivilegeType.Type
@@ -317,7 +350,7 @@ class VirtualRegister(
 
 /** Exception registers
   *
-  * Include: mtvec, medeleg, mepc, mcause, mtval, mscratch, stvec, sepc, scause, stval, sscratch
+  * Include: mtvec, medeleg, mepc, mcause, mtval, mscratch, stvec, sepc, scause, stval, sscratch, time, timeh, instret, instreth,
   */
 class ExceptionRegister {
   private val mtvecReg = RegInit(DataType.operation.zeroAsUInt)
@@ -501,6 +534,10 @@ class StatusRegister {
   }
 }
 
+/** Core registers
+  *
+  * Include: misa, mvendorid, mimpid, mhartid
+  */
 class CoreRegister {
   /*
    * XLEN = 32
@@ -523,7 +560,36 @@ class CoreRegister {
   val mhartid = ReadAndWriteRegister(() => 0.U)
 }
 
-// TODO: mtime
+/** PMP registers
+  *
+  * Include: pmpcfg0-15, pmpaddr0-63
+  *
+  * @note
+  *   Unsupported
+  */
+class PMPRegister {
+  // PMP: Unsupported
+  private val PMP_START = 0x3a0
+  private val PMP_END = 0x3ef
+  val pmps = for (i <- 0x3a0 until PMP_END) yield {
+    i.U -> ReadAndWriteRegister(() => 0.U)
+  }
+}
+
+/** Monitor registers
+  *
+  * Include: mcycle, mcycleh, minstret, minstreth, mhpmcounters, mhpmcountersh, mhpmevents, mcountinhibit, mcounteren, scounteren, cycle, cycleh, hpmcounters, hpmcountersh
+  *
+  * @param privilege
+  *   Privilege
+  * @param instretVal
+  *   The value of instruction retired
+  * @param mtime
+  *   mtime
+  *
+  * @note
+  *   HPM is unsupported
+  */
 class MonitorRegister(privilege: PrivilegeType.Type, instretVal: UInt, mtime: UInt) {
   private val mcountinhibitReg = RegInit(DataType.operation.zeroAsUInt)
   private val mcounterenReg = RegInit(DataType.operation.zeroAsUInt)
@@ -545,6 +611,24 @@ class MonitorRegister(privilege: PrivilegeType.Type, instretVal: UInt, mtime: UI
   val minstret = ReadAndWriteRegister(() => instretCounter(31, 0), data => instretCounter := instretCounter(63, 32) ## data)
   val minstreth = ReadAndWriteRegister(() => instretCounter(63, 32), data => instretCounter := data ## instretCounter(31, 0))
 
+  // HPM: Unsupported
+  private val MHPMC_START = 0xb03
+  private val MHPMC_END = 0xb1f
+  private val MHPMCH_START = 0xb83
+  private val MHPMCH_END = 0xb9f
+  val mhpmcounters = for (i <- MHPMC_START until MHPMC_END) yield {
+    i.U -> ReadAndWriteRegister(() => 0.U)
+  }
+  val mhpmcountersh = for (i <- MHPMCH_START until MHPMCH_END) yield {
+    i.U -> ReadAndWriteRegister(() => 0.U)
+  }
+
+  private val MHPME_START = 0x323
+  private val MHPME_END = 0x33f
+  val mhpmevents = for (i <- MHPME_START until MHPME_END) yield {
+    i.U -> ReadAndWriteRegister(() => 0.U)
+  }
+
   val mcountinhibit = ReadAndWriteRegister(() => mcountinhibitReg, data => mcountinhibitReg := 0.U(29.W) ## data(2) ## 0.U ## data(0))
   val mcounteren = ReadAndWriteRegister(() => mcounterenReg, data => mcounterenReg := 0.U(29.W) ## data(2, 0))
   val scounteren = ReadAndWriteRegister(() => scounterenReg, data => scounterenReg := 0.U(29.W) ## data(2, 0))
@@ -557,9 +641,20 @@ class MonitorRegister(privilege: PrivilegeType.Type, instretVal: UInt, mtime: UI
   val cycle = ReadAndWriteRegister(() => cycleCounter(31, 0), _ => (), () => guard(0))
   val cycleh = ReadAndWriteRegister(() => cycleCounter(63, 32), _ => (), () => guard(0))
 
+  val time = ReadAndWriteRegister(() => mtime(31, 0), _ => (), () => guard(1))
+  val timeh = ReadAndWriteRegister(() => mtime(63, 32), _ => (), () => guard(1))
+
   val instret = ReadAndWriteRegister(() => instretCounter(31, 0), _ => (), () => guard(2))
   val instreth = ReadAndWriteRegister(() => instretCounter(63, 32), _ => (), () => guard(2))
 
-  val time = ReadAndWriteRegister(() => mtime(31, 0), _ => (), () => guard(0))
-  val timeh = ReadAndWriteRegister(() => mtime(63, 32), _ => (), () => guard(0))
+  private val HPMC_START = 0xc03
+  private val HPMC_END = 0xc1f
+  private val HPMCH_START = 0xc83
+  private val HPMCH_END = 0xc9f
+  val hpmcounters = for (i <- HPMC_START until HPMC_END) yield {
+    i.U -> ReadAndWriteRegister(() => 0.U, _ => (), () => true.B)
+  }
+  val hpmcountersh = for (i <- HPMCH_START until HPMCH_END) yield {
+    i.U -> ReadAndWriteRegister(() => 0.U, _ => (), () => true.B)
+  }
 }

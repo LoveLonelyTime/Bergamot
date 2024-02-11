@@ -16,11 +16,11 @@ import bergamot.core.execute.ExecuteQueueType
 
 /** RISC-V instruction types
   *
-  * Although RISC-V has 6 types of instructions, each type has various variants
+  * Although RISC-V has 6 types of instructions, each type has various variants.
   */
 object InstructionType extends ChiselEnum {
   /*
-   * UK: Unknown (Illegal instruction exception)
+   * UNK: Unknown (Illegal instruction exception)
    * R: Register
    * I: Immediate
    * S: Store
@@ -28,7 +28,7 @@ object InstructionType extends ChiselEnum {
    * U: Upper
    * J: Jump
    */
-  val UK, R, I, S, B, U, J = Value
+  val UNK, R, I, S, B, U, J = Value
 }
 
 /** Decode stage entry

@@ -5,8 +5,20 @@ import chisel3.util._
 
 import bergamot.utils.ChiselUtils._
 import bergamot.utils.CoreUtils._
+
 import bergamot.bus.AXIMasterIO
 
+/*
+ * Verilator virtual UART (uart8250)
+ *
+ * Copyright (C) 2024-2025 LoveLonelyTime
+ */
+
+/** Virtual UART
+  *
+  * @param base
+  *   Base address
+  */
 class VirtualUART(base: String) extends Module {
   val io = IO(new Bundle {
     val axi = Flipped(new AXIMasterIO())

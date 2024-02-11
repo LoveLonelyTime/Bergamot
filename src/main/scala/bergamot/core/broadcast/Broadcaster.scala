@@ -13,13 +13,15 @@ import bergamot.utils.ChiselUtils._
 /*
  * Broadcaster
  *
- * This core adopts a data broadcast/data reception method for data forward.
- * The data required by an instruction is received by waiting for broadcast (aka pending)
+ * This core adopts a data broadcast/reception method for data forward.
+ * The data required by an instruction is received by waiting for broadcast (aka pending).
  *
  * Copyright (C) 2024-2025 LoveLonelyTime
  */
 
 /** Abstract broadcaster
+  *
+  * Define a set of universal interfaces
   *
   * A broadcaster selects instructions waiting to be committed from all execution queues through arbitration algorithm. The result of these instructions will be broadcasted through data broadcasting and written back to ROB.
   *
@@ -28,6 +30,7 @@ import bergamot.utils.ChiselUtils._
   */
 abstract class Broadcaster(executeQueueWidth: Int) extends Module {
   require(executeQueueWidth > 0, "Execute queue depth must be greater than 0")
+
   val io = IO(new Bundle {
     // Execute queue interfaces
     val queues = Vec(executeQueueWidth, Flipped(DecoupledIO(new ExecuteResultEntry())))
@@ -40,7 +43,9 @@ abstract class Broadcaster(executeQueueWidth: Int) extends Module {
 
 /** Round-robin broadcaster
   *
-  * Adopt round-robin (RR) arbitration algorithm
+  * Round-robin (RR) arbitration algorithm
+  *
+  * Performance: to be profiled
   *
   * @param executeQueueWidth
   *   Execute queue width
@@ -59,7 +64,11 @@ class RoundRobinBroadcaster(executeQueueWidth: Int) extends Broadcaster(executeQ
   def commit(queuePtr: UInt, entryPtr: Int) = {
     when(io.queues(queuePtr).valid) {
       io.queues(queuePtr).ready := true.B
-      io.robTableCommit.entries(entryPtr) <> io.queues(queuePtr).bits
+
+      // Write back the result
+      io.robTableCommit.entries(entryPtr) := io.queues(queuePtr).bits
+
+      // Broadcast
       when(io.queues(queuePtr).bits.valid) {
         io.broadcast.entries(entryPtr).castBroadcast(io.queues(queuePtr).bits.rd, io.queues(queuePtr).bits.result)
       }
@@ -71,6 +80,14 @@ class RoundRobinBroadcaster(executeQueueWidth: Int) extends Broadcaster(executeQ
   io.broadcast <> new DataBroadcastIO().zero
   io.robTableCommit <> new ROBTableCommitIO().zero
 
+  // Commit 2 results in sequence
   commit(focusPointer, 0)
   commit(nextFocusPointer, 1)
+
+  // Bubble elimination
+  io.queues.foreach { entry =>
+    when(!entry.bits.valid) {
+      entry.ready := true.B
+    }
+  }
 }

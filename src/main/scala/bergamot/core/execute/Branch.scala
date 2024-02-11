@@ -77,14 +77,16 @@ class BranchDecodeStage extends Module {
   when(inReg.opcode(2)) { // jal & jalr
     io.out.bits.op := BranchOperationType.jal
   }.otherwise { // branch
-    switch(inReg.func3) {
-      is("b000".U) { io.out.bits.op := BranchOperationType.eq }
-      is("b001".U) { io.out.bits.op := BranchOperationType.ne }
-      is("b100".U) { io.out.bits.op := BranchOperationType.lt }
-      is("b101".U) { io.out.bits.op := BranchOperationType.ge }
-      is("b110".U) { io.out.bits.op := BranchOperationType.ltu }
-      is("b111".U) { io.out.bits.op := BranchOperationType.geu }
-    }
+    io.out.bits.op := MuxLookup(inReg.func3, BranchOperationType.undefined)(
+      Seq(
+        "b000".U -> BranchOperationType.eq,
+        "b001".U -> BranchOperationType.ne,
+        "b100".U -> BranchOperationType.lt,
+        "b101".U -> BranchOperationType.ge,
+        "b110".U -> BranchOperationType.ltu,
+        "b111".U -> BranchOperationType.geu
+      )
+    )
   }
 
   // op1 & op2
