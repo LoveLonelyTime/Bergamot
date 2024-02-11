@@ -128,6 +128,7 @@ local.properties
 *.i*86
 *.x86_64
 *.hex
+*.bin
 
 # Debug files
 *.dSYM/
@@ -349,7 +350,6 @@ hs_err_pid*
 # VSCode
 .vscode/
 
-# Generated
-generated/
-*.bin
-sim/
+# Verilator files
+obj_dir/
+*.dtb

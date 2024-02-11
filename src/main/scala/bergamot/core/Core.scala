@@ -53,7 +53,7 @@ import bergamot.utils.ChiselUtils._
 import bergamot.utils.CoreUtils._
 
 /*
- * LLT RISC-V Core Exquisite integration
+ * Bergamot core integration
  *
  * Copyright (C) 2024-2025 LoveLonelyTime
  */

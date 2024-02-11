@@ -216,12 +216,12 @@ class InstructionRetire(depth: Int) extends Module {
     //   debugBreakpoint := true.B
     // }
     // when(debugBreakpoint) {
-    //   printf(
-    //     "retired instruction: pc = %x , r = %x, v = %d\n",
-    //     retireEntries(id).pc,
-    //     retireEntries(id).executeResult.result,
-    //     retireEntries(id).valid
-    //   )
+    // printf(
+    //   "retired instruction: pc = %x , r = %x, v = %d\n",
+    //   retireEntries(id).pc,
+    //   retireEntries(id).executeResult.result,
+    //   retireEntries(id).valid
+    // )
     // }
   }
 
