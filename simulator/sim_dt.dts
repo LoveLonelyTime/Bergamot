@@ -1,9 +1,8 @@
 /dts-v1/;
 
 / {
-    #address-cells = <0x2>;
-    #size-cells = <0x2>;
-
+    #address-cells = <0x02>;
+    #size-cells = <0x02>;
 	compatible = "riscv-virtio";
 	model = "riscv-virtio,qemu";
 
@@ -16,12 +15,12 @@
     cpus {
 		#address-cells = <0x01>;
 		#size-cells = <0x00>;
-		timebase-frequency = <0x989680>;
+		timebase-frequency = <0x5F5E100>;
 
         cpu@0 {
-            phandle = <0x1>;
+            phandle = <0x01>;
             device_type = "cpu";
-            reg = <0x0>;
+            reg = <0x00>;
             status = "okay";
             compatible = "riscv";
             riscv,cbop-block-size = <0x40>;
@@ -46,14 +45,15 @@
 			};
 		};
     };
+
     chosen {
-		bootargs = "earlycon";
+		bootargs = "earlycon console=ttyS0";
 		stdout-path = "/soc/uart0@10000000";
 	};
 
     soc {
-        #address-cells = <0x2>;
-        #size-cells = <0x2>;
+        #address-cells = <0x02>;
+        #size-cells = <0x02>;
     	compatible = "simple-bus";
 		ranges;
 
@@ -62,5 +62,11 @@
 			reg = <0x00 0x10000000 0x00 0x100>;
 			compatible = "ns16550a";
         };
+
+		clint@2000000 {
+			interrupts-extended = <0x02 0x03 0x02 0x07>;
+			reg = <0x00 0x2000000 0x00 0x10000>;
+			compatible = "sifive,clint0\0riscv,clint0";
+		};
     };
 };

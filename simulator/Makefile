@@ -5,7 +5,7 @@
 VERILATOR ?= verilator
 DTC ?= dtc
 
-CFLAGS += -DDUMP_MEM -DVM_TRACE
+CFLAGS += -DDUMP_MEM
 VERILATOR_FLAG += --cc -CFLAGS $(CFLAGS) --exe --build --trace -Wno-WIDTH
 
 # The default "make all" rule

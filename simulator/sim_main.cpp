@@ -136,9 +136,9 @@ int main(int argc, char **argv) {
     while (!Verilated::gotFinish() && (max_time == 0 || main_time <= max_time)) {
         main_time++;
         top->clock = !top->clock;
-        // if (main_time % 1000000 == 0) {
-        //     printf("Clock : %lu\n", main_time);
-        // }
+        if (main_time % 1000000 == 0) {
+            VL_PRINTF(P_INFO"Clock : %lu\n", main_time);
+        }
 
         if (main_time > 1 && main_time < 10)
             top->reset = 1;
