@@ -38,7 +38,7 @@ class SMAWithStoreQueueInterconnect extends Module {
 
   // Bypass - 32bits
   io.bypass.address := io.in.address
-  private val data = Wire(Vec(4, DataType.aByte))
+  private val data = Wire(Vec(4, DataType.byte))
   for (i <- 0 until 4) {
     val bypassVal = Mux(io.bypass.strobe(i), io.bypass.data, io.out.data)
     data(i) := extractBits(CoreConstant.byteWidth)(bypassVal, i)

@@ -18,7 +18,7 @@ import bergamot.utils.ChiselUtils._
 /** Register mapping interface
   */
 class RegisterMappingIO extends Bundle {
-  // Request Registers
+  // Request registers
   val regGroup = Output(
     Vec2(
       new Bundle {

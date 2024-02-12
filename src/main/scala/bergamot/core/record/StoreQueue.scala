@@ -112,7 +112,7 @@ class StoreQueue(depth: Int) extends Module {
 
   // Bypass logic
   private val laneStrobes = VecInit.fill(4)(false.B)
-  private val laneData = VecInit.fill(4)(DataType.aByte.zeroAsUInt)
+  private val laneData = VecInit.fill(4)(DataType.byte.zeroAsUInt)
 
   // TODO: I want to optimize this code snippet
   // Overlapping window

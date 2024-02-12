@@ -35,8 +35,12 @@ class RegisterMappingTable extends Module {
     val recover = Input(Bool())
   })
 
-  // Register files
-  private val table = RegInit(Vec(32, new RegisterMappingTableEntry()).zero)
+  /*
+   * Register files
+   * - 0-31: x0 -> x31
+   * - 32-63: f0 -> f31
+   */
+  private val table = RegInit(Vec(64, new RegisterMappingTableEntry()).zero)
 
   io.mapping.ready := io.alloc.valid // Alloc valid
   io.alloc.ready := io.mapping.valid // Mapping valid
