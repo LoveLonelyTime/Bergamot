@@ -8,27 +8,24 @@ import bergamot.core.CoreConstant
 
 trait IEEESpec {
   val width: Int
-  val signWidth: Int
   val significandWidth: Int
   val exponentWidth: Int
 
-  val bias = (1 << (exponentWidth - 1)) - 1
-  val minExp = -bias + 1
-  val maxExp = bias
+  def bias = (1 << (exponentWidth - 1)) - 1
+  def minExp = -bias + 1
+  def maxExp = bias
 }
 
 object IEEESpec32 extends IEEESpec {
   val width: Int = 32
-  val signWidth: Int = 1
-  val significandWidth: Int = 8
-  val exponentWidth: Int = 23
+  val significandWidth: Int = 23
+  val exponentWidth: Int = 8
 }
 
 object IEEESpec64 extends IEEESpec {
   val width: Int = 64
-  val signWidth: Int = 1
-  val significandWidth: Int = 11
-  val exponentWidth: Int = 52
+  val significandWidth: Int = 52
+  val exponentWidth: Int = 11
 }
 
 object FPRoundoff extends ChiselEnum {
@@ -90,19 +87,34 @@ object FPRoundoff extends ChiselEnum {
   }
 }
 
-class FPEntry extends Bundle {
+trait FP extends Bundle {
+  val sign: Bool
+  val significand: UInt
+  val exponent: SInt
+}
+
+object FP {
+  def extend[S <: FP, D <: FP](source: S, dest: D) = {
+    assert(source.significand.getWidth <= dest.significand.getWidth)
+    dest.sign := source.sign
+    dest.exponent := source.exponent
+    dest.significand := source.significand ## Fill(dest.significand.getWidth - source.significand.getWidth, 0.U)
+  }
+}
+
+class FPEntry extends FP {
   val sign = Bool()
   val significand = DataType.double
   val exponent = SInt(CoreConstant.halfWidth.W)
 }
 
-class FPMulEntry extends Bundle {
+class FPMulEntry extends FP {
   val sign = Bool()
   val significand = UInt((DataType.double.getWidth * 2).W)
   val exponent = SInt(CoreConstant.halfWidth.W)
 }
 
-class FPAddEntry extends Bundle {
+class FPAddEntry extends FP {
   val sign = Bool()
   val significand = UInt((DataType.double.getWidth * 2 + 1).W)
   val exponent = SInt(CoreConstant.halfWidth.W)

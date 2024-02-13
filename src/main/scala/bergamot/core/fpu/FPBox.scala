@@ -4,25 +4,29 @@ import chisel3._
 import chisel3.util._
 import bergamot.core.DataType
 
-class FPWordUnbox extends Module {
+class FPUnbox(spec: IEEESpec) extends Module {
   val io = IO(new Bundle {
-    val in = Input(DataType.word)
+    val in = Input(UInt(spec.width.W))
     val out = Output(new FPEntry())
   })
 
-  when(io.in(30, 23).andR) { // NaN
+  private val sign = io.in.head(1)
+  private val exp = io.in.tail(1).head(spec.exponentWidth)
+  private val significand = io.in.tail(1 + spec.exponentWidth)
+
+  when(exp.andR) { // NaN
     // TODO
     io.out.sign := 0.U
     io.out.significand := 0.U
-    io.out.exponent := 0.U
-  }.elsewhen(!io.in(30, 23).orR) { // Subnormal number
-    io.out.sign := io.in(31)
-    io.out.significand := 0.U ## io.in(22, 0) ## 0.U(41.W)
-    io.out.exponent := -126.S
+    io.out.exponent := 0.S
+  }.elsewhen(!exp.orR) { // Subnormal number
+    io.out.sign := sign
+    io.out.significand := significand ## Fill(io.out.significand.getWidth - significand.getWidth, 0.U)
+    io.out.exponent := spec.minExp.S
   }.otherwise { // Normal number
-    io.out.sign := io.in(31)
-    io.out.significand := 1.U ## io.in(22, 0) ## 0.U(41.W)
-    io.out.exponent := io.in(30, 23).asSInt - 127.S
+    io.out.sign := sign
+    io.out.significand := 1.U ## significand ## Fill(io.out.significand.getWidth - significand.getWidth - 1, 0.U)
+    io.out.exponent := exp.asSInt - spec.bias.S + 1.S
   }
 }
 
@@ -49,15 +53,16 @@ class FPBox(spec: IEEESpec) extends Module {
   private val normalRound = MuxLookup(io.roundoff, alignment)(FPRoundoff.roundoffModes(alignment, spec.significandWidth + 1))
 
   // To IEEE745
-  private val biasExp = (normalRound.exponent + spec.bias.S).tail(spec.exponentWidth)
 
   when(subnormalRound.exponent < spec.minExp.S) { // -> 0
-    io.out := subnormalRound.sign ## 0.U(spec.exponentWidth.W) ## 0.U(spec.significandWidth.W)
+    io.out := subnormalRound.sign ## 0.U(spec.exponentWidth.W) ## Fill(spec.significandWidth, 0.U)
   }.elsewhen(subnormalRound.exponent === spec.minExp.S) { // Subnormal number
     io.out := subnormalRound.sign ## 0.U(spec.exponentWidth.W) ## subnormalRound.significand.head(spec.significandWidth)
   }.elsewhen(normalRound.exponent > (spec.maxExp + 1).S) { // -> inf
-    io.out := normalRound.sign ## Fill(spec.exponentWidth, 1.U) ## 0.U(spec.significandWidth.W)
+    io.out := normalRound.sign ## Fill(spec.exponentWidth, 1.U) ## Fill(spec.significandWidth, 0.U)
   }.otherwise { // Normal number
-    io.out := normalRound.sign ## biasExp.asUInt ## normalRound.significand.head(spec.significandWidth + 1).tail(spec.significandWidth)
+    val biasExp = Wire(UInt(spec.exponentWidth.W))
+    biasExp := (normalRound.exponent + (spec.bias - 1).S).asUInt
+    io.out := normalRound.sign ## biasExp ## normalRound.significand.tail(1).head(spec.significandWidth)
   }
 }
