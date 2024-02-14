@@ -87,10 +87,29 @@ object FPRoundoff extends ChiselEnum {
   }
 }
 
+class FPException extends Bundle {
+  val invalidOperation = Bool()
+  val divideByZero = Bool()
+  val overflow = Bool()
+  val underflow = Bool()
+  val inexact = Bool()
+}
+
+object FPType extends ChiselEnum {
+  val normal, inf, nan = Value
+}
+
 trait FP extends Bundle {
-  val sign: Bool
+  val sign = Bool()
   val significand: UInt
   val exponent: SInt
+  val fpType = FPType()
+
+  def isZero() = significand === 0.U
+  def isInf() = fpType === FPType.inf
+  def isNaN() = fpType === FPType.nan
+  def isPositiveInf() = isInf() && !sign
+  def isNegativeInf() = isInf() && sign
 }
 
 object FP {
@@ -103,19 +122,16 @@ object FP {
 }
 
 class FPEntry extends FP {
-  val sign = Bool()
   val significand = DataType.double
   val exponent = SInt(CoreConstant.halfWidth.W)
 }
 
 class FPMulEntry extends FP {
-  val sign = Bool()
   val significand = UInt((DataType.double.getWidth * 2).W)
   val exponent = SInt(CoreConstant.halfWidth.W)
 }
 
 class FPAddEntry extends FP {
-  val sign = Bool()
   val significand = UInt((DataType.double.getWidth * 2 + 1).W)
   val exponent = SInt(CoreConstant.halfWidth.W)
 }
