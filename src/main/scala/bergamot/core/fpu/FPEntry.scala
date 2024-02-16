@@ -42,6 +42,7 @@ object FPRoundoff extends ChiselEnum {
     val add = fp.significand.head(reserved) +& 1.U
 
     result.sign := fp.sign
+    result.fpType := fp.fpType
     when(add(reserved)) {
       result.exponent := fp.exponent + 1.S
       result.significand := add(reserved, 1) ## 0.U((result.significand.getWidth - reserved).W)
@@ -99,6 +100,19 @@ object FPType extends ChiselEnum {
   val normal, inf, nan = Value
 }
 
+object FPClassCode {
+  val negitiveInf = 1
+  val negitiveNormal = 2
+  val negitiveSubnormal = 4
+  val negitiveZero = 8
+  val positiveZero = 16
+  val positiveSubnormal = 32
+  val positiveNormal = 64
+  val positiveInf = 128
+  val signalingNaN = 256
+  val quietNaN = 512
+}
+
 trait FP extends Bundle {
   val sign = Bool()
   val significand: UInt
@@ -118,6 +132,22 @@ object FP {
     dest.sign := source.sign
     dest.exponent := source.exponent
     dest.significand := source.significand ## Fill(dest.significand.getWidth - source.significand.getWidth, 0.U)
+  }
+
+  def neg[T <: FP](source: T, dest: T) = {
+    dest.sign := !source.sign
+    dest.exponent := source.exponent
+    dest.significand := source.significand
+  }
+
+  def nan = {
+    val result = Wire(new FPEntry())
+    result.sign := 0.U
+    result.exponent := 0.S
+    result.significand := 0.U
+    result.fpType := FPType.nan
+
+    result
   }
 }
 

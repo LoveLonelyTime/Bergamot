@@ -16,6 +16,7 @@ import bergamot.core.fpu.FPMul
 import bergamot.core.fpu.FPMulEntry
 import bergamot.core.fpu.FPAdd
 import bergamot.core.fpu.FP
+import bergamot.core.fpu.FPConv2FP
 
 class FPMulAdd extends Module {
   val io = IO(new Bundle {
@@ -102,10 +103,25 @@ class TestFPSqrt extends Module {
   io.out := fpBox.io.out
 }
 
+class TestFPConv2FP extends Module {
+  val io = IO(new Bundle {
+    val in = Input(UInt(32.W))
+    val out = Output(UInt(32.W))
+  })
+
+  private val fpConv = Module(new FPConv2FP(32, true))
+  fpConv.io.in := io.in
+
+  private val fpBox = Module(new FPBox(IEEESpec32))
+  fpBox.io.in := fpConv.io.out
+  fpBox.io.roundoff := FPRoundoff.RNE
+  io.out := fpBox.io.out
+}
+
 class FPTest extends AnyFlatSpec with ChiselScalatestTester {
   "FPTest" should "pass" in {
-    test(new TestFPSqrt) { dut =>
-      dut.io.in.poke("h416f7751".U)
+    test(new TestFPConv2FP()) { dut =>
+      dut.io.in.poke("hFFFFFFF1".U)
       dut.clock.step()
       println(dut.io.out.peekInt())
     }

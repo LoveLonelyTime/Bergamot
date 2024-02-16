@@ -25,6 +25,7 @@ import bergamot.core.execute.ExecuteQueueType
 import bergamot.core.execute.Branch
 import bergamot.core.execute.Memory
 import bergamot.core.execute.ALU
+import bergamot.core.execute.FPU
 import bergamot.core.execute.ExecuteResultEntry
 import bergamot.core.execute.OutOfOrderedExecuteQueue
 import bergamot.core.execute.LoadReservationUpdateIO
@@ -81,7 +82,7 @@ object CoreConfig {
     iTLBDepth = 8,
     cacheLineDepth = 8,
     fetchQueueDepth = 8,
-    executeQueueWidth = 3,
+    executeQueueWidth = 4,
     executeQueueDepth = 8,
     dTLBDepth = 8,
     storeQueueDepth = 8,
@@ -292,16 +293,20 @@ class CoreExecute(config: CoreConfig) extends Module {
   })
 
   private val aluExecuteQueue =
-    Module(new OutOfOrderedExecuteQueue(config.executeQueueDepth, ExecuteQueueType.alu))
+    Module(new OutOfOrderedExecuteQueue(config.executeQueueDepth, ExecuteQueueType.alu, false))
   private val alu = Module(new ALU())
 
   private val branchExecuteQueue =
-    Module(new OutOfOrderedExecuteQueue(config.executeQueueDepth, ExecuteQueueType.branch))
+    Module(new OutOfOrderedExecuteQueue(config.executeQueueDepth, ExecuteQueueType.branch, false))
   private val branch = Module(new Branch())
 
   private val memoryExecuteQueue =
-    Module(new InOrderedExecuteQueue(config.executeQueueDepth, ExecuteQueueType.memory))
+    Module(new InOrderedExecuteQueue(config.executeQueueDepth, ExecuteQueueType.memory, false))
   private val memory = Module(new Memory())
+
+  private val fpuExecuteQueue =
+    Module(new OutOfOrderedExecuteQueue(config.executeQueueDepth, ExecuteQueueType.float, true)) // Enable rs3
+  private val fpu = Module(new FPU())
 
   private val storeQueue = Module(new StoreQueue(config.storeQueueDepth))
   private val storeQueueMemoryWriter = Module(new StoreQueueMemoryWriter())
@@ -318,6 +323,7 @@ class CoreExecute(config: CoreConfig) extends Module {
   io.enqs(0) <> aluExecuteQueue.io.enqAndType
   io.enqs(1) <> branchExecuteQueue.io.enqAndType
   io.enqs(2) <> memoryExecuteQueue.io.enqAndType
+  io.enqs(3) <> fpuExecuteQueue.io.enqAndType
 
   // DTLB
   dtlb.io.sma <> sma2CacheLineRequestTLB.io.smaReader
@@ -375,6 +381,12 @@ class CoreExecute(config: CoreConfig) extends Module {
   memoryExecuteQueue.io.broadcast <> io.broadcast
   memoryExecuteQueue.io.recover := io.recover
 
+  // FPU
+  fpu.io.in <> fpuExecuteQueue.io.deq
+  fpu.io.recover := io.recover
+  fpuExecuteQueue.io.broadcast <> io.broadcast
+  fpuExecuteQueue.io.recover := io.recover
+
   // CacheLineRequest2Interconnect
   cacheLineRequest2Interconnect.io.out <> io.cacheLineRequest
 
@@ -382,6 +394,7 @@ class CoreExecute(config: CoreConfig) extends Module {
   io.deqs(0) <> alu.io.out
   io.deqs(1) <> branch.io.out
   io.deqs(2) <> memory.io.out
+  io.deqs(3) <> fpu.io.out
 }
 
 /** Core backend

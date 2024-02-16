@@ -42,6 +42,7 @@ class ExecuteEntry extends Bundle {
   val instructionType = InstructionType() // Instruction Type
   val rs1 = new DataBroadcastSlotEntry() // rs1
   val rs2 = new DataBroadcastSlotEntry() // rs2
+  val rs3 = new DataBroadcastSlotEntry() // rs3
   val rd = DataType.receipt // rd
   val func3 = DataType.func3 // func3
   val func7 = DataType.func7 // func7
