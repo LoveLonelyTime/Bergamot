@@ -49,7 +49,7 @@ object CoreExporter {
     exportList.zipWithIndex.foreach { case (core, id) =>
       println(s"${id + 1}. ${core._1}")
     }
-    print("Please select the core you want to export:")
+    print("Please select the core you want to export: ")
     val id = new Scanner(System.in).nextInt()
 
     if (id < 1 || id > exportList.length) {

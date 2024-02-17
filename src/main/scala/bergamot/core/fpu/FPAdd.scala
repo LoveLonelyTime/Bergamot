@@ -49,6 +49,8 @@ class FPAdd extends Module {
     io.out.significand := Mux(add.head(1).asBool, add, add.tail(1) ## 0.U)
   }
 
+  io.out.fpType := FPType.normal
+
   // Corner case
   when(io.in1.isNaN() || io.in2.isNaN()) { // Quiet NaN
     io.out.fpType := FPType.nan

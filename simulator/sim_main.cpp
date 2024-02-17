@@ -168,13 +168,13 @@ int main(int argc, char **argv) {
 
         top->eval();
 
-        if (top->io_debug_hit) {
+        //if (top->io_debug_hit) {
 #ifdef VM_TRACE
             // Dump trace data for this cycle
             if (tfp)
                 tfp->dump(main_time);
 #endif
-        }
+       // }
     }
 
     top->final();

@@ -33,10 +33,24 @@ object FPRoundoff extends ChiselEnum {
 
   def roundoffModes(fp: FPAddEntry, reserved: Int) = {
     Seq(
-      RNE -> roundTiesToEven(fp, reserved)
+      RNE -> roundTiesToEven(fp, reserved),
+      RTZ -> roundTowardZero(fp, reserved),
+      RDN -> roundTowardNegative(fp, reserved),
+      RUP -> roundTowardPositive(fp, reserved),
+      RMM -> roundTiesToMax(fp, reserved)
     )
   }
 
+  /** Increase decimal
+    *
+    * Remove non reserved bits and increase reserved bits
+    * @param fp
+    *   Decimal
+    * @param reserved
+    *   Number of digits to be reserved
+    * @return
+    *   Result
+    */
   def up(fp: FPAddEntry, reserved: Int) = {
     val result = Wire(new FPAddEntry())
     val add = fp.significand.head(reserved) +& 1.U
@@ -54,6 +68,15 @@ object FPRoundoff extends ChiselEnum {
     result
   }
 
+  /** Truncate decimal
+    *
+    * @param fp
+    *   Decimal
+    * @param reserved
+    *   Number of digits to be reserved
+    * @return
+    *   Result
+    */
   def down(fp: FPAddEntry, reserved: Int) = {
     val result = WireInit(fp)
     result.significand := fp.significand.head(reserved) ## 0.U((result.significand.getWidth - reserved).W)
@@ -63,7 +86,7 @@ object FPRoundoff extends ChiselEnum {
 
   def roundTiesToEven(fp: FPAddEntry, reserved: Int) = {
     val result = Wire(new FPAddEntry())
-    val judge = fp.significand.head(reserved + 1)(1, 0) ## !fp.significand.tail(fp.significand.getWidth - reserved - 1).orR
+    val judge = fp.significand.head(reserved + 1)(1, 0) ## !fp.significand.tail(reserved + 1).orR
     val upVal = up(fp, reserved)
     val downVal = down(fp, reserved)
 
@@ -80,6 +103,75 @@ object FPRoundoff extends ChiselEnum {
         "b110".U -> upVal,
         // Drop MSB is 1 and half
         "b011".U -> downVal,
+        "b111".U -> upVal
+      )
+    )
+
+    result
+  }
+
+  def roundTowardZero(fp: FPAddEntry, reserved: Int) = {
+    val result = Wire(new FPAddEntry())
+    result := down(fp, reserved)
+
+    result
+  }
+
+  def roundTowardPositive(fp: FPAddEntry, reserved: Int) = {
+    val result = Wire(new FPAddEntry())
+    val judge = fp.sign ## !fp.significand.tail(reserved).orR
+    val upVal = up(fp, reserved)
+    val downVal = down(fp, reserved)
+
+    result := MuxLookup(judge, fp)(
+      Seq(
+        "b00".U -> upVal, // Positive, not zero tail
+        "b01".U -> downVal, // Positive, zero tail
+        "b10".U -> downVal, // Negitive
+        "b11".U -> downVal // Negitive
+      )
+    )
+
+    result
+  }
+
+  def roundTowardNegative(fp: FPAddEntry, reserved: Int) = {
+    val result = Wire(new FPAddEntry())
+    val judge = fp.sign ## !fp.significand.tail(reserved).orR
+    val upVal = up(fp, reserved)
+    val downVal = down(fp, reserved)
+
+    result := MuxLookup(judge, fp)(
+      Seq(
+        "b00".U -> downVal, // Positive
+        "b01".U -> downVal, // Positive
+        "b10".U -> upVal, // Negitive, not zero tail
+        "b11".U -> downVal // Negitive, zero tail
+      )
+    )
+
+    result
+  }
+
+  def roundTiesToMax(fp: FPAddEntry, reserved: Int) = {
+    val result = Wire(new FPAddEntry())
+    val judge = fp.significand.head(reserved + 1)(1, 0) ## !fp.significand.tail(reserved + 1).orR
+    val upVal = up(fp, reserved)
+    val downVal = down(fp, reserved)
+
+    // LSB | Drop MSB | Half
+    result := MuxLookup(judge, fp)(
+      Seq(
+        // Drop MSB is 0
+        "b000".U -> downVal,
+        "b100".U -> downVal,
+        "b001".U -> downVal,
+        "b101".U -> downVal,
+        // Drop MSB is 1, but not half
+        "b010".U -> upVal,
+        "b110".U -> upVal,
+        // Drop MSB is 1 and half
+        "b011".U -> upVal,
         "b111".U -> upVal
       )
     )

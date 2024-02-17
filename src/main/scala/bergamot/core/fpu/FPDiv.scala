@@ -30,6 +30,7 @@ class FPDiv extends Module {
   io.out.exponent := io.in1.exponent - io.in2.exponent + io.in1.significand.getWidth.S
   io.out.significand := (io.in1.significand ## Fill(io.in1.significand.getWidth, 0.U) / io.in2.significand) ## 0.U // 64 -> 129
   io.out.sign := io.in1.sign ^ io.in2.sign
+  io.out.fpType := FPType.normal
 
   // Corner case
   when(io.in1.isNaN() || io.in2.isNaN()) { // Quiet NaN

@@ -150,6 +150,7 @@ class BergamotCore(config: CoreConfig) extends Module {
   coreExecute.io.privilege := coreBackend.io.privilege
   coreExecute.io.mstatus := coreBackend.io.mstatus
   coreExecute.io.satp := coreBackend.io.satp
+  coreExecute.io.fcsr := coreBackend.io.fcsr
   coreExecute.io.recover := coreBackend.io.recover
 
   // CoreBackend
@@ -282,6 +283,7 @@ class CoreExecute(config: CoreConfig) extends Module {
     val privilege = Input(PrivilegeType())
     val satp = Input(DataType.operation)
     val mstatus = Input(DataType.operation)
+    val fcsr = Input(DataType.operation)
 
     val dTLBFlush = Flipped(new FlushCacheIO())
     val dCacheFlush = Flipped(new FlushCacheIO())
@@ -383,6 +385,7 @@ class CoreExecute(config: CoreConfig) extends Module {
 
   // FPU
   fpu.io.in <> fpuExecuteQueue.io.deq
+  fpu.io.fcsr := io.fcsr
   fpu.io.recover := io.recover
   fpuExecuteQueue.io.broadcast <> io.broadcast
   fpuExecuteQueue.io.recover := io.recover
@@ -422,6 +425,7 @@ class CoreBackend(config: CoreConfig) extends Module {
     val privilege = Output(PrivilegeType())
     val mstatus = Output(DataType.operation)
     val satp = Output(DataType.operation)
+    val fcsr = Output(DataType.operation)
 
     val dCacheFlush = new FlushCacheIO()
     val iCacheFlush = new FlushCacheIO()
@@ -473,6 +477,7 @@ class CoreBackend(config: CoreConfig) extends Module {
   io.privilege := csr.io.privilege
   io.mstatus := csr.io.mstatus
   io.satp := csr.io.satp
+  io.fcsr := csr.io.fcsr
   csr.io.mtime := io.mtime
   csr.io.mtimeIRQ := io.mtimeIRQ
 }

@@ -202,7 +202,7 @@ class DecodeStage extends Module {
     // zimm can not occupy the position of rs1
     val rs1Tozimm = in.instruction(6, 2) === "b11100".U && in.instruction(14)
 
-    // rd: R/I/U/J
+    // rd: R/R4/I/U/J
     val fpRd = WireInit(false.B)
     when(in.instruction(6, 2) === "b10100".U) {
       fpRd := (in.instruction(31, 27) in ("b00000".U, "b00001".U, "b00010".U, "b00011".U, "b01011".U, "b00100".U, "b00101".U, "b10100".U, "b10100".U, "b10100".U /* Basic */, "b11010".U /* fcvt.s.w / fcvt.d.w */, "b01000".U /* fcvt.s.d / fcvt.d.s */, "b11110".U /* fmv.w.x */ ))
@@ -211,11 +211,11 @@ class DecodeStage extends Module {
     }
 
     out.rd := 0.U
-    when(out.instructionType in (InstructionType.R, InstructionType.I, InstructionType.U, InstructionType.J)) {
+    when(out.instructionType in (InstructionType.R, InstructionType.R4, InstructionType.I, InstructionType.U, InstructionType.J)) {
       out.rd := fpRd ## in.instruction(11, 7)
     }
 
-    // rs1(zimm): R/I/S/B
+    // rs1(zimm): R/R4/I/S/B
     val fpRs1 = WireInit(false.B)
     when(in.instruction(6, 2) === "b10100".U) {
       fpRs1 := (in.instruction(31, 27) in ("b00000".U, "b00001".U, "b00010".U, "b00011".U, "b01011".U, "b00100".U, "b00101".U, "b10100".U, "b10100".U, "b10100".U /* Basic */, "b11000".U /* fcvt.w.s / fcvt.w.d */, "b11100".U /* fmv.x.w / fclass */, "b01000".U /* fcvt.s.d / fcvt.d.s */ ))
@@ -225,7 +225,7 @@ class DecodeStage extends Module {
 
     out.zimm := 0.U
     out.rs1 := 0.U
-    when(out.instructionType in (InstructionType.R, InstructionType.I, InstructionType.S, InstructionType.B)) {
+    when(out.instructionType in (InstructionType.R, InstructionType.R4, InstructionType.I, InstructionType.S, InstructionType.B)) {
       val rs1 = in.instruction(19, 15)
       when(rs1Tozimm) {
         out.zimm := rs1
@@ -234,14 +234,14 @@ class DecodeStage extends Module {
       }
     }
 
-    // rs2: R/S/B
+    // rs2: R/R4/S/B
     val fpRs2 = WireInit(false.B)
     when(in.instruction(6, 2) in ("b10000".U, "b10001".U, "b10010".U, "b10011".U, "b10100".U)) {
       fpRs2 := true.B
     }
 
     out.rs2 := 0.U
-    when(out.instructionType in (InstructionType.R, InstructionType.S, InstructionType.B)) {
+    when(out.instructionType in (InstructionType.R, InstructionType.R4, InstructionType.S, InstructionType.B)) {
       out.rs2 := fpRs2 ## in.instruction(24, 20)
     }
 
@@ -251,15 +251,15 @@ class DecodeStage extends Module {
       out.rs3 := 1.U ## in.instruction(31, 27)
     }
 
-    // func3: R/I/S/B
+    // func3: R/R4/I/S/B
     out.func3 := 0.U
-    when(out.instructionType in (InstructionType.R, InstructionType.I, InstructionType.S, InstructionType.B)) {
+    when(out.instructionType in (InstructionType.R, InstructionType.R4, InstructionType.I, InstructionType.S, InstructionType.B)) {
       out.func3 := in.instruction(14, 12)
     }
 
-    // func7: R/I (srli,srai)
+    // func7: R/R4/I (srli,srai)
     out.func7 := 0.U
-    when(out.instructionType in (InstructionType.R, InstructionType.I)) {
+    when(out.instructionType in (InstructionType.R, InstructionType.R4, InstructionType.I)) {
       out.func7 := in.instruction(31, 25)
     }
 
@@ -281,7 +281,7 @@ class DecodeStage extends Module {
         (in.error =/= MemoryErrorCode.none || out.instructionType === InstructionType.UNK) -> ExecuteQueueType.alu, // Exception handler
         ((out.opcode(6, 2) in ("b11011".U, "b11001".U)) || out.instructionType === InstructionType.B) -> ExecuteQueueType.branch, // jal, jalr, branch
         ((out.opcode(6, 2) in ("b00000".U, "b01011".U)) || out.instructionType === InstructionType.S) -> ExecuteQueueType.memory, // load, store, lr, sc, amo
-        (out.opcode(6, 2) in ("b10100".U)) -> ExecuteQueueType.float
+        (out.opcode(6, 2) in ("b10000".U, "b10001".U, "b10010".U, "b10011".U, "b10100".U)) -> ExecuteQueueType.float
       )
     )
 

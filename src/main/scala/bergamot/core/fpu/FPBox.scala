@@ -2,7 +2,10 @@ package bergamot.core.fpu
 
 import chisel3._
 import chisel3.util._
-import bergamot.core.DataType
+
+import bergamot.core._
+
+import bergamot.utils.ChiselUtils._
 
 class FPUnbox(spec: IEEESpec) extends Module {
   val io = IO(new Bundle {
@@ -52,8 +55,11 @@ class FPBox(spec: IEEESpec) extends Module {
   val io = IO(new Bundle {
     val in = Input(new FPAddEntry())
     val out = Output(UInt(spec.width.W))
+    val exception = Output(new FPException())
     val roundoff = Input(FPRoundoff())
   })
+
+  io.exception := new FPException().zero
 
   // Alignment
   private val alignment = WireInit(io.in)
@@ -71,13 +77,14 @@ class FPBox(spec: IEEESpec) extends Module {
   private val normalRound = MuxLookup(io.roundoff, alignment)(FPRoundoff.roundoffModes(alignment, spec.significandWidth + 1))
 
   // To IEEE745
-
   when(subnormalRound.exponent < spec.minExp.S) { // -> 0
     io.out := subnormalRound.sign ## 0.U(spec.exponentWidth.W) ## Fill(spec.significandWidth, 0.U)
   }.elsewhen(subnormalRound.exponent === spec.minExp.S) { // Subnormal number
     io.out := subnormalRound.sign ## 0.U(spec.exponentWidth.W) ## subnormalRound.significand.head(spec.significandWidth)
+    io.exception.underflow := true.B
   }.elsewhen(normalRound.exponent > (spec.maxExp + 1).S) { // -> inf
     io.out := normalRound.sign ## Fill(spec.exponentWidth, 1.U) ## Fill(spec.significandWidth, 0.U)
+    io.exception.overflow := true.B
   }.otherwise { // Normal number
     val biasExp = Wire(UInt(spec.exponentWidth.W))
     biasExp := (normalRound.exponent + (spec.bias - 1).S).asUInt

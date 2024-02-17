@@ -55,9 +55,11 @@ class FPSqrt extends Module {
     io.out.significand := roots(io.in.significand.getWidth * 2) ## 0.U // 128 -> 129
   }
 
+  io.out.fpType := FPType.normal
+
   // Corner case
   when(io.in.isZero()) { // sqrt 0
-    io.out.exponent := 0.U
+    io.out.exponent := 0.S
     io.out.significand := 0.U
   }.elsewhen(io.in.sign) { // sqrt < 0
     io.out.fpType := FPType.nan

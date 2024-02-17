@@ -6,6 +6,7 @@ import chisel3.util._
 import bergamot.core._
 
 import bergamot.utils.ChiselUtils._
+import dataclass.data
 
 /*
  * CSRs (Control and Status Registers) unit, is used to save the core and machine state
@@ -33,6 +34,7 @@ class CSRs extends Module {
     val privilege = Output(PrivilegeType()) // Current core privilege
     val mstatus = Output(DataType.operation)
     val satp = Output(DataType.operation)
+    val fcsr = Output(DataType.operation)
     // External drive
     val monitor = Flipped(new MonitorIO())
     val mtime = Input(DataType.double)
@@ -47,16 +49,21 @@ class CSRs extends Module {
   private val virtualReg = new VirtualRegister(statusReg.mstatus.value(20), statusReg.privilege)
   private val monitorReg = new MonitorRegister(statusReg.privilege, io.monitor.instret, io.mtime)
   private val pmpReg = new PMPRegister()
+  private val fpuReg = new FPURegister()
 
   // Fixed output
   io.satp := virtualReg.satp.value
   io.privilege := statusReg.privilege
   io.mstatus := statusReg.mstatus.value
+  io.fcsr := fpuReg.fcsr.value
 
   // CSR mapping table
 
   private val csrMappingTable = Seq(
     // Unprivileged
+    "h001".U -> fpuReg.fflags,
+    "h002".U -> fpuReg.frm,
+    "h003".U -> fpuReg.fcsr,
     "hc00".U -> monitorReg.cycle,
     "hc01".U -> monitorReg.time,
     "hc02".U -> monitorReg.instret,
@@ -657,4 +664,16 @@ class MonitorRegister(privilege: PrivilegeType.Type, instretVal: UInt, mtime: UI
   val hpmcountersh = for (i <- HPMCH_START until HPMCH_END) yield {
     i.U -> ReadAndWriteRegister(() => 0.U, _ => (), () => true.B)
   }
+}
+
+/** FPU registers
+  *
+  * Include: fcsr, frm, fflags
+  */
+class FPURegister {
+  private val fcsrReg = RegInit(DataType.operation.zeroAsUInt)
+
+  val fcsr = ReadAndWriteRegister(() => fcsrReg, data => fcsrReg := data(7, 0))
+  val frm = ReadAndWriteRegister(() => fcsrReg(7, 5), data => fcsrReg := data(2, 0) ## fcsrReg(4, 0))
+  val fflags = ReadAndWriteRegister(() => fcsrReg(4, 0), data => fcsrReg := fcsrReg(7, 5) ## data(4, 0))
 }
