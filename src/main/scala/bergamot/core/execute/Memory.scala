@@ -20,6 +20,8 @@ import bergamot.utils.ChiselUtils._
  *
  * List of supported instructions:
  * - I: sb, sh, sw, lb, lh, lw, lbu, lhu
+ * - A:
+ * - FD: flw, fsw, fld, fsd
  *
  * Copyright (C) 2024-2025 LoveLonelyTime
  */
@@ -102,6 +104,7 @@ class MemoryDecodeStage extends Module {
           "b000".U -> MemoryOperationType.lb,
           "b001".U -> MemoryOperationType.lh,
           "b010".U -> MemoryOperationType.lw,
+          "b011".U -> MemoryOperationType.ld,
           "b100".U -> MemoryOperationType.lbu,
           "b101".U -> MemoryOperationType.lhu
         )
@@ -112,7 +115,8 @@ class MemoryDecodeStage extends Module {
         Seq(
           "b000".U -> MemoryOperationType.sb,
           "b001".U -> MemoryOperationType.sh,
-          "b010".U -> MemoryOperationType.sw
+          "b010".U -> MemoryOperationType.sw,
+          "b011".U -> MemoryOperationType.sd
         )
       )
     }
@@ -143,7 +147,7 @@ class MemoryDecodeStage extends Module {
   // op1: the data stored
   io.out.bits.op1 := inReg.rs2.receipt
 
-  io.out.bits.rd := inReg.rd
+  io.out.bits.rd := inReg.rd.receipt
   io.out.bits.pc := inReg.pc
   io.out.bits.next := inReg.next
   io.out.bits.valid := inReg.valid
@@ -191,7 +195,7 @@ class MemoryExecuteStage extends Module {
   // Misaligned address check
   io.out.bits.error := MemoryErrorCode.none
   when(
-    ((inReg.op in MemoryOperationType.wordValues) && vaddress(1, 0) =/= 0.U) || // Word 4bytes
+    ((inReg.op in (MemoryOperationType.wordValues ++ MemoryOperationType.doubleValues)) && vaddress(1, 0) =/= 0.U) || // Word/double 4bytes
       ((inReg.op in MemoryOperationType.halfValues) && vaddress(0) =/= 0.U) // Half 2bytes
   ) {
     io.out.bits.error := MemoryErrorCode.misaligned
@@ -309,8 +313,9 @@ class MemoryReadWriteStage extends Module {
   private val recoveryLoadReservation = RegInit(new LoadReservationEntry().zero)
 
   private val statusReg = RegInit(Status.idle)
+
   private object Status extends ChiselEnum {
-    val idle, read, write = Value
+    val idle, readTop, readBottom, writeTop, writeBottom = Value
   }
 
   // Pipeline logic

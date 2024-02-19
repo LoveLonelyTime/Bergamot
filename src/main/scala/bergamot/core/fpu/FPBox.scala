@@ -77,7 +77,12 @@ class FPBox(spec: IEEESpec) extends Module {
   private val normalRound = MuxLookup(io.roundoff, alignment)(FPRoundoff.roundoffModes(alignment, spec.significandWidth + 1))
 
   // To IEEE745
-  when(subnormalRound.exponent < spec.minExp.S) { // -> 0
+  // TODO : Subnormal
+  when(io.in.fpType === FPType.inf) { // inf
+    io.out := io.in.sign ## Fill(spec.exponentWidth, 1.U) ## Fill(spec.significandWidth, 0.U)
+  }.elsewhen(io.in.fpType === FPType.nan) { // NaN
+    io.out := io.in.sign ## Fill(spec.exponentWidth, 1.U) ## io.in.significand.head(spec.significandWidth)
+  }.elsewhen(subnormalRound.exponent < spec.minExp.S) { // -> 0
     io.out := subnormalRound.sign ## 0.U(spec.exponentWidth.W) ## Fill(spec.significandWidth, 0.U)
   }.elsewhen(subnormalRound.exponent === spec.minExp.S) { // Subnormal number
     io.out := subnormalRound.sign ## 0.U(spec.exponentWidth.W) ## subnormalRound.significand.head(spec.significandWidth)

@@ -5,6 +5,7 @@ import chisel3.util._
 
 import bergamot.core._
 import bergamot.core.broadcast.DataBroadcastSlotEntry
+import bergamot.core.broadcast.DataBroadcastSendEntry
 import bergamot.core.execute.MemoryErrorCode
 import bergamot.core.execute.ExecuteQueueType
 
@@ -45,6 +46,11 @@ class DecodeStageEntry extends Bundle {
   val valid = Bool() // Validity
 }
 
+class RegisterEntry extends Bundle {
+  val reg = DataType.register
+  val mapping = Bool()
+}
+
 /** Register mapping stage entry
   *
   * The input of register mapping stage
@@ -53,14 +59,13 @@ class RegisterMappingStageEntry extends Bundle {
   val opcode = DataType.opcode // opcode
   val instructionType = InstructionType() // Instruction Type
   val executeQueue = ExecuteQueueType() // Execute queue
-  val rs1 = DataType.register // rs1
-  val rs2 = DataType.register // rs2
-  val rs3 = DataType.register // rs3
-  val rd = DataType.register // rd
+  val rs1 = new RegisterEntry() // rs1
+  val rs2 = new RegisterEntry() // rs2
+  val rs3 = new RegisterEntry() // rs3
+  val rd = new RegisterEntry() // rd
   val func3 = DataType.func3 // func3
   val func7 = DataType.func7 // func7
   val imm = DataType.immediate // Immediate
-  val zimm = DataType.zimmediate // Zero-extend immediate
   val pc = DataType.address // Corresponding PC
   val spec = DataType.address // Speculative PC
   val next = DataType.address // Next PC
@@ -79,11 +84,10 @@ class IssueStageEntry extends Bundle {
   val rs1 = new DataBroadcastSlotEntry() // Broadcast rs1
   val rs2 = new DataBroadcastSlotEntry() // Broadcast rs2
   val rs3 = new DataBroadcastSlotEntry() // Broadcast rs2
-  val rd = DataType.receipt // rd
+  val rd = new DataBroadcastSendEntry() // rd
   val func3 = DataType.func3 // func3
   val func7 = DataType.func7 // func7
   val imm = DataType.immediate // Immediate
-  val zimm = DataType.zimmediate // Zero-extend immediate
   val pc = DataType.address // Corresponding PC
   val next = DataType.address // Next PC
   val error = MemoryErrorCode() // Error

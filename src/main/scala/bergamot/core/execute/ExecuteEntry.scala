@@ -5,6 +5,7 @@ import chisel3.util._
 
 import bergamot.core._
 import bergamot.core.broadcast.DataBroadcastSlotEntry
+import bergamot.core.broadcast.DataBroadcastSendEntry
 import bergamot.core.decode.InstructionType
 
 /*
@@ -43,11 +44,10 @@ class ExecuteEntry extends Bundle {
   val rs1 = new DataBroadcastSlotEntry() // rs1
   val rs2 = new DataBroadcastSlotEntry() // rs2
   val rs3 = new DataBroadcastSlotEntry() // rs3
-  val rd = DataType.receipt // rd
+  val rd = new DataBroadcastSendEntry() // rd
   val func3 = DataType.func3 // func3
   val func7 = DataType.func7 // func7
   val imm = DataType.immediate // Immediate
-  val zimm = DataType.zimmediate // CSR zimm
   val pc = DataType.address // Corresponding PC
   val next = DataType.address // Next PC
   val error = MemoryErrorCode() // Error

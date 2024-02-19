@@ -17,6 +17,7 @@ object MemoryOperationType extends ChiselEnum {
    * - lb: load byte
    * - lh: load half word
    * - lw: load word
+   * - ld: load double
    * - lbu: load unsigned byte
    * - lhu: load unsigned half word
    *
@@ -24,6 +25,7 @@ object MemoryOperationType extends ChiselEnum {
    * - sb: store byte
    * - sh: store half word
    * - sw: store word
+   * - sd: store double
    *
    * AMO operations:
    * - amoswap: read and swap
@@ -38,17 +40,18 @@ object MemoryOperationType extends ChiselEnum {
    * - lr: load reserved
    * - sc: store conditional
    */
-  val undefined, none, lb, lh, lw, lbu, lhu, sb, sh, sw, amoswap, amoadd, amoxor, amoand, amoor, amomin, amomax, amominu, amomaxu, lr, sc = Value
+  val undefined, none, lb, lh, lw, ld, lbu, lhu, sb, sh, sw, sd, amoswap, amoadd, amoxor, amoand, amoor, amomin, amomax, amominu, amomaxu, lr, sc = Value
 
   // By type
   val amoValues = List(amoswap, amoadd, amoxor, amoand, amoor, amomin, amomax, amominu, amomaxu)
-  val readValues = List(lb, lh, lw, lbu, lhu, lr) ::: amoValues
-  val writeValues = List(sb, sh, sw, sc) ::: amoValues
+  val readValues = List(lb, lh, lw, ld, lbu, lhu, lr) ::: amoValues
+  val writeValues = List(sb, sh, sw, sd, sc) ::: amoValues
 
   // By width
   val byteValues = List(lb, lbu, sb)
   val halfValues = List(lh, lhu, sh)
   val wordValues = List(lw, sw, lr, sc) ::: amoValues
+  val doubleValues = List(ld, sd)
 }
 
 /** Memory access length

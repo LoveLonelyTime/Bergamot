@@ -4,6 +4,8 @@ import chisel3._
 import chisel3.util._
 
 import bergamot.core._
+import bergamot.core.decode.RegisterEntry
+import bergamot.core.broadcast.DataBroadcastSendEntry
 import bergamot.core.broadcast.DataBroadcastSlotEntry
 
 import bergamot.utils.CoreUtils._
@@ -22,10 +24,10 @@ class RegisterMappingIO extends Bundle {
   val regGroup = Output(
     Vec2(
       new Bundle {
-        val rs1 = DataType.register
-        val rs2 = DataType.register
-        val rs3 = DataType.register
-        val rd = DataType.register
+        val rs1 = new RegisterEntry()
+        val rs2 = new RegisterEntry()
+        val rs3 = new RegisterEntry()
+        val rd = new RegisterEntry()
       }
     )
   )
@@ -37,7 +39,7 @@ class RegisterMappingIO extends Bundle {
         val rs1 = new DataBroadcastSlotEntry()
         val rs2 = new DataBroadcastSlotEntry()
         val rs3 = new DataBroadcastSlotEntry()
-        val rd = DataType.receipt
+        val rd = new DataBroadcastSendEntry()
       }
     )
   )

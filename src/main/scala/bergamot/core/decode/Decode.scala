@@ -198,10 +198,6 @@ class DecodeStage extends Module {
       out.instructionType := InstructionType.UNK
     }
 
-    // rs1Tozimm (csrrwi, csrrsi, csrrci)
-    // zimm can not occupy the position of rs1
-    val rs1Tozimm = in.instruction(6, 2) === "b11100".U && in.instruction(14)
-
     // rd: R/R4/I/U/J
     val fpRd = WireInit(false.B)
     when(in.instruction(6, 2) === "b10100".U) {
@@ -210,12 +206,18 @@ class DecodeStage extends Module {
       fpRd := true.B
     }
 
-    out.rd := 0.U
+    out.rd := new RegisterEntry().zero
     when(out.instructionType in (InstructionType.R, InstructionType.R4, InstructionType.I, InstructionType.U, InstructionType.J)) {
-      out.rd := fpRd ## in.instruction(11, 7)
+      out.rd.reg := fpRd ## in.instruction(11, 7)
+      out.rd.mapping := true.B
     }
 
-    // rs1(zimm): R/R4/I/S/B
+    // rs1: R/R4/I/S/B
+    val rs1Mapping = WireInit(true.B)
+    when(in.instruction(6, 2) === "b11100".U && in.instruction(14)) { // csrrwi, csrrsi, csrrci
+      rs1Mapping := false.B
+    }
+
     val fpRs1 = WireInit(false.B)
     when(in.instruction(6, 2) === "b10100".U) {
       fpRs1 := (in.instruction(31, 27) in ("b00000".U, "b00001".U, "b00010".U, "b00011".U, "b01011".U, "b00100".U, "b00101".U, "b10100".U, "b10100".U, "b10100".U /* Basic */, "b11000".U /* fcvt.w.s / fcvt.w.d */, "b11100".U /* fmv.x.w / fclass */, "b01000".U /* fcvt.s.d / fcvt.d.s */ ))
@@ -223,32 +225,34 @@ class DecodeStage extends Module {
       fpRs1 := true.B
     }
 
-    out.zimm := 0.U
-    out.rs1 := 0.U
+    out.rs1 := new RegisterEntry().zero
     when(out.instructionType in (InstructionType.R, InstructionType.R4, InstructionType.I, InstructionType.S, InstructionType.B)) {
-      val rs1 = in.instruction(19, 15)
-      when(rs1Tozimm) {
-        out.zimm := rs1
-      }.otherwise {
-        out.rs1 := fpRs1 ## rs1
-      }
+      out.rs1.reg := fpRs1 ## in.instruction(19, 15)
+      out.rs1.mapping := rs1Mapping
     }
 
     // rs2: R/R4/S/B
+    val rs2Mapping = WireInit(true.B)
+    when(in.instruction(6, 2) === "b10100".U && (in.instruction(31, 27) in ("b01000".U, "b11000".U, "b11010".U))) { // fcvt
+      rs2Mapping := false.B
+    }
+
     val fpRs2 = WireInit(false.B)
     when(in.instruction(6, 2) in ("b10000".U, "b10001".U, "b10010".U, "b10011".U, "b10100".U)) {
       fpRs2 := true.B
     }
 
-    out.rs2 := 0.U
+    out.rs2 := new RegisterEntry().zero
     when(out.instructionType in (InstructionType.R, InstructionType.R4, InstructionType.S, InstructionType.B)) {
-      out.rs2 := fpRs2 ## in.instruction(24, 20)
+      out.rs2.reg := fpRs2 ## in.instruction(24, 20)
+      out.rs2.mapping := rs2Mapping
     }
 
     // rs3: R4
-    out.rs3 := 0.U
+    out.rs3 := new RegisterEntry().zero
     when(out.instructionType in InstructionType.R4) {
-      out.rs3 := 1.U ## in.instruction(31, 27)
+      out.rs3.reg := 1.U ## in.instruction(31, 27)
+      out.rs3.mapping := true.B
     }
 
     // func3: R/R4/I/S/B
@@ -280,7 +284,7 @@ class DecodeStage extends Module {
       Seq(
         (in.error =/= MemoryErrorCode.none || out.instructionType === InstructionType.UNK) -> ExecuteQueueType.alu, // Exception handler
         ((out.opcode(6, 2) in ("b11011".U, "b11001".U)) || out.instructionType === InstructionType.B) -> ExecuteQueueType.branch, // jal, jalr, branch
-        ((out.opcode(6, 2) in ("b00000".U, "b01011".U)) || out.instructionType === InstructionType.S) -> ExecuteQueueType.memory, // load, store, lr, sc, amo
+        ((out.opcode(6, 2) in ("b00000".U, "b01011".U, "b00001".U)) || out.instructionType === InstructionType.S) -> ExecuteQueueType.memory, // load, store, lr, sc, amo, flx, fsx
         (out.opcode(6, 2) in ("b10000".U, "b10001".U, "b10010".U, "b10011".U, "b10100".U)) -> ExecuteQueueType.float
       )
     )
@@ -362,7 +366,6 @@ class RegisterMappingStage extends Module {
       out.func3 := in.func3
       out.func7 := in.func7
       out.imm := in.imm
-      out.zimm := in.zimm
 
       out.pc := in.pc
       out.next := in.next
@@ -370,9 +373,9 @@ class RegisterMappingStage extends Module {
       out.valid := in.valid
 
       // Write ROB table
-      robTableWriteEntry.id := mappingGroup.rd
+      robTableWriteEntry.id := mappingGroup.rd.receipt
       robTableWriteEntry.pc := in.pc
-      robTableWriteEntry.rd := in.rd
+      robTableWriteEntry.rd := Mux(in.rd.mapping, in.rd.reg, 0.U)
       robTableWriteEntry.spec := in.spec
       robTableWriteEntry.valid := in.valid
     }
@@ -472,7 +475,6 @@ class IssueStage(executeQueueWidth: Int) extends Module {
     queue.enq.bits.func3 := entry.func3
     queue.enq.bits.func7 := entry.func7
     queue.enq.bits.imm := entry.imm
-    queue.enq.bits.zimm := entry.zimm
     queue.enq.bits.pc := entry.pc
     queue.enq.bits.next := entry.next
     queue.enq.bits.error := entry.error

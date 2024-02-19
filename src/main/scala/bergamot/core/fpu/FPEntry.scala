@@ -221,12 +221,14 @@ trait FP extends Bundle {
 object FP {
   def extend[S <: FP, D <: FP](source: S, dest: D) = {
     assert(source.significand.getWidth <= dest.significand.getWidth)
+    dest.fpType := source.fpType
     dest.sign := source.sign
     dest.exponent := source.exponent
     dest.significand := source.significand ## Fill(dest.significand.getWidth - source.significand.getWidth, 0.U)
   }
 
   def neg[T <: FP](source: T, dest: T) = {
+    dest.fpType := source.fpType
     dest.sign := !source.sign
     dest.exponent := source.exponent
     dest.significand := source.significand
