@@ -1,8 +1,8 @@
-/* 
+/*
  * Bergamot verilator testbench
- * 
+ *
  * Usage: VVerilatorTestCore [+trace] +B<binary file> [+D<device tree file>] [+T<timeout>] [+W<write host>]
- *     +trace : Output waveform file.     
+ *     +trace : Output waveform file.
  *     +B<binary file> : The RISC-V binary file to be executed.
  *     +D<device tree file> : The device tree file (.dtb).
  *     +T<timeout> : Maximum testing cycle.
@@ -44,10 +44,12 @@ const unsigned long DT_OFFSET = 66846720;
 const unsigned long DT_SIZE = 262144;
 
 #ifdef DUMP_MEM
-void dump_mem(int signo) {
+void dump_mem(int signo)
+{
     FILE *fp = fopen("mem.bin", "wb");
-    if(!fp){
-        VL_PRINTF(P_ERROR"Memory file open failed!\n");
+    if (!fp)
+    {
+        VL_PRINTF(P_ERROR "Memory file open failed!\n");
         exit(-1);
     }
     fwrite(ram, sizeof(unsigned int), DRAM_SIZE, fp);
@@ -57,9 +59,10 @@ void dump_mem(int signo) {
 }
 #endif
 
-int main(int argc, char **argv) {
+int main(int argc, char **argv)
+{
     const char *flag = nullptr;
-    FILE * fp = nullptr;
+    FILE *fp = nullptr;
     vluint64_t main_time = 0;
 
 #ifdef DUMP_MEM
@@ -70,32 +73,39 @@ int main(int argc, char **argv) {
 
     // Get binary file
     flag = Verilated::commandArgsPlusMatch("B");
-    if(flag && strncmp(flag, "+B", 2) == 0) {
+    if (flag && strncmp(flag, "+B", 2) == 0)
+    {
         fp = fopen(&flag[2], "rb");
-        if(!fp) {
-            VL_PRINTF(P_ERROR"Binary file open failed!\n");
+        if (!fp)
+        {
+            VL_PRINTF(P_ERROR "Binary file open failed!\n");
             return -1;
         }
         fread(ram + BIN_OFFSET, sizeof(unsigned int), BIN_SIZE, fp);
         fclose(fp);
-    } else {
-        VL_PRINTF(P_ERROR"No binary file specified!\n");
+    }
+    else
+    {
+        VL_PRINTF(P_ERROR "No binary file specified!\n");
         return -1;
     }
 
-
     // Get device tree file
     flag = Verilated::commandArgsPlusMatch("D");
-    if(flag && strncmp(flag, "+D", 2) == 0){
-            fp = fopen(&flag[2], "rb");
-        if(!fp) {
-            VL_PRINTF(P_ERROR"Device tree file open failed!\n");
+    if (flag && strncmp(flag, "+D", 2) == 0)
+    {
+        fp = fopen(&flag[2], "rb");
+        if (!fp)
+        {
+            VL_PRINTF(P_ERROR "Device tree file open failed!\n");
             return -1;
         }
         fread(ram + DT_OFFSET, sizeof(unsigned int), DT_SIZE, fp);
         fclose(fp);
-    } else {
-        VL_PRINTF(P_WARN"No device tree file specified!\n");
+    }
+    else
+    {
+        VL_PRINTF(P_WARN "No device tree file specified!\n");
     }
 
     // Create verilator top
@@ -105,9 +115,10 @@ int main(int argc, char **argv) {
     // and if at run time passed the +trace argument, turn on tracing
     VerilatedVcdC *tfp = NULL;
     flag = Verilated::commandArgsPlusMatch("trace");
-    if (flag && 0 == strcmp(flag, "+trace")) {
+    if (flag && 0 == strcmp(flag, "+trace"))
+    {
         Verilated::traceEverOn(true); // Verilator must compute traced signals
-        VL_PRINTF(P_INFO"Enabling waves into logs/vlt_dump.vcd...\n");
+        VL_PRINTF(P_INFO "Enabling waves into logs/vlt_dump.vcd...\n");
         tfp = new VerilatedVcdC;
         top->trace(tfp, 99); // Trace 99 levels of hierarchy
         Verilated::mkdir("logs");
@@ -119,25 +130,46 @@ int main(int argc, char **argv) {
     vluint64_t max_time = 0;
 
     flag = Verilated::commandArgsPlusMatch("T");
-    if(flag && strncmp(flag, "+T", 2) == 0) {
+    if (flag && strncmp(flag, "+T", 2) == 0)
+    {
         max_time = strtoul(&flag[2], NULL, 10);
     }
 
-    if(max_time == 0)
-        VL_PRINTF(P_WARN"Simulation will be executed infinitely!\n");
+    if (max_time == 0)
+        VL_PRINTF(P_WARN "Simulation will be executed infinitely!\n");
 
     // Set write host address
     unsigned long write_host = 0;
     flag = Verilated::commandArgsPlusMatch("W");
-    if(flag && strncmp(flag, "+W", 2) == 0) {
+    if (flag && strncmp(flag, "+W", 2) == 0)
+    {
         write_host = strtoul(&flag[2], NULL, 16) - RAM_START;
     }
 
-    while (!Verilated::gotFinish() && (max_time == 0 || main_time <= max_time)) {
+    while (!Verilated::gotFinish() && (max_time == 0 || main_time <= max_time))
+    {
         main_time++;
         top->clock = !top->clock;
-        if (main_time % 1000000 == 0) {
-            VL_PRINTF(P_INFO"Clock : %lu\n", main_time);
+        if (top->io_debug_hit && top->io_debug_start)
+        {
+            if (top->clock & 1)
+            {
+                fprintf(stderr, "[p:\n");
+            }
+            else
+            {
+                fprintf(stderr, "[n:\n");
+            }
+        }
+        if (main_time > 3611000000ULL)
+        {
+            top->io_debug_start = 1;
+        }
+
+        if (main_time % 1000000 == 0)
+        {
+            printf("Clock : %lu\n", main_time);
+            fflush(stdout);
         }
 
         if (main_time > 1 && main_time < 10)
@@ -147,7 +179,7 @@ int main(int argc, char **argv) {
 
         // Virtual RAM
         unsigned int readAddress = top->io_rdAddress >> 2;
-        if(readAddress >= DRAM_SIZE) 
+        if (readAddress >= DRAM_SIZE)
             top->io_rdData = 0;
         else
             top->io_rdData = ram[readAddress];
@@ -164,11 +196,17 @@ int main(int argc, char **argv) {
 
         // Virtual UART
         if (top->io_send && top->clock)
-            VL_PRINTF("%c", top->io_dataOut);
+        {
+            unsigned int val = top->io_dataOut;
+            fprintf(stderr, "Console[>]CH=%u\n", val);
+            printf("%c", top->io_dataOut);
+            fflush(stdout);
+        }
 
         top->eval();
 
-        if (top->io_debug_hit) {
+        if (top->io_debug_hit)
+        {
 #ifdef VM_TRACE
             // Dump trace data for this cycle
             if (tfp)
@@ -180,18 +218,20 @@ int main(int argc, char **argv) {
     top->final();
 
 #ifdef VM_TRACE
-    if (tfp) {
+    if (tfp)
+    {
         tfp->close();
         tfp = NULL;
     }
 #endif
     delete top;
 
-    if(write_host){
+    if (write_host)
+    {
         unsigned int val = ram[write_host >> 2];
-        
-        if(val != 1)
-            VL_PRINTF(P_WARN"Expected %u, but got %u.\n", 1, val);
+
+        if (val != 1)
+            VL_PRINTF(P_WARN "Expected %u, but got %u.\n", 1, val);
     }
     return 0;
 }

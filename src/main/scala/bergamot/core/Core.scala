@@ -118,6 +118,10 @@ class BergamotCore(config: CoreConfig) extends Module {
   private val coreExecute = Module(new CoreExecute(config))
   private val coreBackend = Module(new CoreBackend(config))
 
+  coreFrontend.io.hit := coreBackend.io.debug.hit && io.debug.start
+  coreExecute.io.hit := coreBackend.io.debug.hit && io.debug.start
+  coreBackend.io.hit := coreBackend.io.debug.hit && io.debug.start
+
   private val tlbFlusher = Module(new Parallel2Flusher())
 
   private val cacheLineRequest2Interconnect = Module(new CacheLineRequest2Interconnect(config.cacheLineDepth))
@@ -125,6 +129,8 @@ class BergamotCore(config: CoreConfig) extends Module {
   private val l2Cache = Module(new SetCache(config.l2CacheDepth, config.l2CacheWay, config.cacheLineDepth))
 
   private val axiMaster = Module(new AXIMaster())
+  axiMaster.io.hit := coreBackend.io.debug.hit && io.debug.start
+
   private val cacheLineRequest2SMA = Module(new CacheLineRequest2SMA(config.cacheLineDepth))
   private val sma2ReaderInterconnect = Module(new SMA2ReaderInterconnect())
 
@@ -207,6 +213,8 @@ class CoreFrontend(config: CoreConfig) extends Module {
     val privilege = Input(PrivilegeType())
     val satp = Input(DataType.operation)
     val mstatus = Input(DataType.operation)
+
+    val hit = Input(Bool())
   })
 
   private val itlb = Module(new TLB(config.iTLBDepth, false))
@@ -218,6 +226,9 @@ class CoreFrontend(config: CoreConfig) extends Module {
   private val sma2CacheLineRequest = Module(new SMA2CacheLineRequest(config.cacheLineDepth))
   private val cacheLineRequest2Interconnect = Module(new CacheLineRequest2Interconnect(config.cacheLineDepth))
 
+  fetch.io.hit := io.hit
+  decode.io.hit := io.hit
+  registerMappingTable.io.hit := io.hit
   // ITLB
   itlb.io.sma <> sma2CacheLineRequest.io.smaReader
   sma2CacheLineRequest.io.request <> cacheLineRequest2Interconnect.io.in1
@@ -289,19 +300,24 @@ class CoreExecute(config: CoreConfig) extends Module {
     val retire = Flipped(new StoreQueueRetireIO())
 
     val recover = Input(Bool())
+
+    val hit = Input(Bool())
   })
 
   private val aluExecuteQueue =
     Module(new OutOfOrderedExecuteQueue(config.executeQueueDepth, ExecuteQueueType.alu))
   private val alu = Module(new ALU())
+  alu.io.hit := io.hit
 
   private val branchExecuteQueue =
     Module(new OutOfOrderedExecuteQueue(config.executeQueueDepth, ExecuteQueueType.branch))
   private val branch = Module(new Branch())
+  branch.io.hit := io.hit
 
   private val memoryExecuteQueue =
     Module(new InOrderedExecuteQueue(config.executeQueueDepth, ExecuteQueueType.memory))
   private val memory = Module(new Memory())
+  memory.io.hit := io.hit
 
   private val storeQueue = Module(new StoreQueue(config.storeQueueDepth))
   private val storeQueueMemoryWriter = Module(new StoreQueueMemoryWriter())
@@ -420,11 +436,16 @@ class CoreBackend(config: CoreConfig) extends Module {
     val mtimeIRQ = Input(Bool())
 
     val debug = new DebugIO()
+
+    val hit = Input(Bool())
   })
   private val broadcaster = Module(new RoundRobinBroadcaster(config.executeQueueWidth))
   private val instructionRetire = Module(new InstructionRetire(config.robDepth))
   private val rob = Module(new ROB(config.robDepth))
   private val csr = Module(new CSRs())
+
+  rob.io.hit := io.hit
+  instructionRetire.io.hit := io.hit
 
   // Broadcaster
   broadcaster.io.queues <> io.deqs

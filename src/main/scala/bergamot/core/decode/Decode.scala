@@ -42,12 +42,17 @@ class Decode(executeQueueWidth: Int) extends Module {
     val robTableWrite = new ROBTableWriteIO()
     // Recovery interface
     val recover = Input(Bool())
+
+    val hit = Input(Bool())
   })
 
   // Pipeline stages
   private val decodeStage = Module(new DecodeStage())
   private val registerMappingStage = Module(new RegisterMappingStage())
   private val issueStage = Module(new IssueStage(executeQueueWidth))
+
+  decodeStage.io.hit := io.hit
+  registerMappingStage.io.hit := io.hit
 
   io.in <> decodeStage.io.in
   decodeStage.io.out <> registerMappingStage.io.in
@@ -77,6 +82,8 @@ class DecodeStage extends Module {
     val out = DecoupledIO(Vec2(new RegisterMappingStageEntry()))
     // Recovery interface
     val recover = Input(Bool())
+
+    val hit = Input(Bool())
   })
   // Pipeline logic
   private val inReg = RegInit(Vec2(new DecodeStageEntry()).zero)
@@ -230,6 +237,33 @@ class DecodeStage extends Module {
   when(io.recover) {
     inReg.foreach(_.valid := false.B)
   }
+
+  when(io.hit) {
+    printf(
+      "DecodeStage[>]I0PC=%x,I0=opcode:%x func7:%x func3:%x imm:%x rs1:%x rs2:%x rd:%x,I0T=%x,I0E=%x,I1PC=%x,I1=opcode:%x func7:%x func3:%x imm:%x rs1:%x rs2:%x rd:%x,I1T=%x,I1E=%x\n",
+      io.out.bits(0).pc,
+      io.out.bits(0).opcode,
+      io.out.bits(0).func7,
+      io.out.bits(0).func3,
+      io.out.bits(0).imm,
+      io.out.bits(0).rs1,
+      io.out.bits(0).rs2,
+      io.out.bits(0).rd,
+      io.out.bits(0).instructionType.asUInt,
+      io.out.bits(0).executeQueue.asUInt,
+      io.out.bits(1).pc,
+      io.out.bits(1).opcode,
+      io.out.bits(1).func7,
+      io.out.bits(1).func3,
+      io.out.bits(1).imm,
+      io.out.bits(1).rs1,
+      io.out.bits(1).rs2,
+      io.out.bits(1).rd,
+      io.out.bits(1).instructionType.asUInt,
+      io.out.bits(1).executeQueue.asUInt
+    )
+  }
+
 }
 
 /** Register mapping stage
@@ -249,6 +283,8 @@ class RegisterMappingStage extends Module {
     val robTableWrite = new ROBTableWriteIO()
     // Recovery logic
     val recover = Input(Bool())
+
+    val hit = Input(Bool())
   })
 
   // Pipeline logic
@@ -317,6 +353,32 @@ class RegisterMappingStage extends Module {
   when(io.recover) {
     inReg.foreach(_.valid := false.B)
   }
+
+  // Print
+  when(io.hit) {
+    printf(
+      "RegisterMappingStage[>]I0PC=%x,I0=r1:%x -> %x(Pending:%x) r2:%x -> %x(Pending:%x) rd:%x -> %x,I1PC=%x,I1=r1:%x -> %x(Pending:%x) r2:%x -> %x(Pending:%x) rd:%x -> %x\n",
+      inReg(0).pc,
+      inReg(0).rs1,
+      io.out.bits(0).rs1.receipt,
+      io.out.bits(0).rs1.pending,
+      inReg(0).rs2,
+      io.out.bits(0).rs2.receipt,
+      io.out.bits(0).rs2.pending,
+      inReg(0).rd,
+      io.out.bits(0).rd,
+      inReg(1).pc,
+      inReg(1).rs1,
+      io.out.bits(1).rs1.receipt,
+      io.out.bits(1).rs1.pending,
+      inReg(1).rs2,
+      io.out.bits(1).rs2.receipt,
+      io.out.bits(1).rs2.pending,
+      inReg(1).rd,
+      io.out.bits(1).rd
+    )
+  }
+
 }
 
 /** Issue stage

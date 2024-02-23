@@ -43,6 +43,8 @@ class ROB(depth: Int) extends Module {
     val robTableRetire = new ROBTableRetireIO(depth)
     // Recovery interface
     val recover = Input(Bool())
+
+    val hit = Input(Bool())
   })
 
   // Table logic
@@ -109,4 +111,14 @@ class ROB(depth: Int) extends Module {
   when(io.recover) {
     table.foreach(_.valid := false.B)
   }
+
+  // Print
+  when(io.hit) {
+    table.zipWithIndex.foreach { case (item, id) =>
+      when(item.valid) {
+        printf("ROB[>]ID=%x,PC=%x,RD=%x,COM=%x\n", id.U, item.pc, item.rd, item.commit)
+      }
+    }
+  }
+
 }

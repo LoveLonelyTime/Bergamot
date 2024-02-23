@@ -31,6 +31,8 @@ class AXIMaster extends Module {
     val smaWriter = Flipped(new SMAWriterIO())
     // Out
     val axi = new AXIMasterIO()
+
+    val hit = Input(Bool())
   })
 
   io.smaReader <> new SMAReaderIO().zero
@@ -93,6 +95,14 @@ class AXIMaster extends Module {
 
         readerStatusReg := AXIStatus.idle
       }
+    }
+  }
+
+  when(io.hit) {
+    when(readerStatusReg === AXIStatus.address) {
+      printf("AXI[>]BUS=AR\n")
+    }.elsewhen(readerStatusReg === AXIStatus.response) {
+      printf("AXI[>]BUS=R\n")
     }
   }
 
@@ -166,4 +176,14 @@ class AXIMaster extends Module {
       }
     }
   }
+  when(io.hit) {
+    when(writerStatusReg === AXIStatus.address) {
+      printf("AXI[>]BUS=AW\n")
+    }.elsewhen(writerStatusReg === AXIStatus.data) {
+      printf("AXI[>]BUS=W\n")
+    }.elsewhen(writerStatusReg === AXIStatus.response) {
+      printf("AXI[>]BUS=B\n")
+    }
+  }
+
 }

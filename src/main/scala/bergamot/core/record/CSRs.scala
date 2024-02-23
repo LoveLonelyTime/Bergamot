@@ -209,7 +209,7 @@ class CSRs extends Module {
 
   when(io.trap.interruptTrigger) {
     val delegation = interruptsReg.mideleg.value(pendingInterruptCode)
-    printf("Pending code = %d\n", pendingInterruptCode)
+    // printf("Pending code = %d\n", pendingInterruptCode)
     when(!delegation) { // M-Handler
       io.trap.handlerPC := exceptionReg.interruptMLevel(io.trap.trapPC, pendingInterruptCode, io.trap.trapVal)
       statusReg.trapToMLevel()

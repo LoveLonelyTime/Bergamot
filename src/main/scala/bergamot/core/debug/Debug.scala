@@ -12,4 +12,5 @@ import chisel3._
   */
 class DebugIO extends Bundle {
   val hit = Output(Bool()) // Hit breakpoint?
+  val start = Input(Bool())
 }

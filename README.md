@@ -18,6 +18,13 @@ Bergamot has ALL the structures of a basic superscalar pipeline:
 
 And is trying to maintain simplicity as much as possible.
 
+## Visual
+
+This branch is built from visual program code:
+
+- `visual/visual.py` Player program with python.
+- `simulator/sim_main.cpp` Simulation recording program.
+
 ## Architecture
 
 The Bergamot is a simple superscalar RV32GC RISC-V core written in the [Chisel](https://chisel.eecs.berkeley.edu/) hardware construction language.

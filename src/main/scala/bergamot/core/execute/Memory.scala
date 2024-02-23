@@ -42,12 +42,19 @@ class Memory extends Module {
     val loadReservationUpdate = Flipped(new LoadReservationUpdateIO())
     // Recovery logic
     val recover = Input(Bool())
+
+    val hit = Input(Bool())
   })
 
   private val memoryDecodeStage = Module(new MemoryDecodeStage())
   private val memoryExecuteStage = Module(new MemoryExecuteStage())
   private val memoryTLBStage = Module(new MemoryTLBStage())
   private val memoryReadWriteStage = Module(new MemoryReadWriteStage())
+
+  memoryDecodeStage.io.hit := io.hit
+  memoryExecuteStage.io.hit := io.hit
+  memoryTLBStage.io.hit := io.hit
+  memoryReadWriteStage.io.hit := io.hit
 
   io.in <> memoryDecodeStage.io.in
   memoryDecodeStage.io.out <> memoryExecuteStage.io.in
@@ -79,6 +86,8 @@ class MemoryDecodeStage extends Module {
     val out = DecoupledIO(new MemoryExecuteStageEntry())
     // Recovery logic
     val recover = Input(Bool())
+
+    val hit = Input(Bool())
   })
   // Pipeline logic
   private val inReg = RegInit(new ExecuteEntry().zero)
@@ -154,6 +163,18 @@ class MemoryDecodeStage extends Module {
   when(io.recover) {
     inReg.valid := false.B
   }
+  when(io.hit) {
+    printf(
+      "MemoryDecode[>]V=%x,PC=%x,OP=%x,ADD=%x + %x,OP1=%x\n",
+      inReg.valid,
+      inReg.pc,
+      io.out.bits.op.asUInt,
+      io.out.bits.add1,
+      io.out.bits.add2,
+      io.out.bits.op1
+    )
+  }
+
 }
 
 /** Memory execute stage
@@ -169,6 +190,8 @@ class MemoryExecuteStage extends Module {
     val out = DecoupledIO(new MemoryTLBStageEntry())
     // Recovery interface
     val recover = Input(Bool())
+
+    val hit = Input(Bool())
   })
   // Pipeline logic
   private val inReg = RegInit(new MemoryExecuteStageEntry().zero)
@@ -208,6 +231,15 @@ class MemoryExecuteStage extends Module {
   when(io.recover) {
     inReg.valid := false.B
   }
+
+  when(io.hit) {
+    printf(
+      "MemoryExecute[>]PC=%x,VADDR=%x\n",
+      inReg.pc,
+      io.out.bits.vaddress
+    )
+  }
+
 }
 
 /** Memory TLB stage
@@ -225,6 +257,8 @@ class MemoryTLBStage extends Module {
     val dtlb = new TLBRequestIO()
     // Recovery interface
     val recover = Input(Bool())
+
+    val hit = Input(Bool())
   })
   private val statusReg = RegInit(Status.idle)
   private object Status extends ChiselEnum {
@@ -282,6 +316,15 @@ class MemoryTLBStage extends Module {
     inReg.valid := false.B
     // To ensure TLB integrity, do not undo FSM
   }
+
+  when(io.hit) {
+    printf(
+      "MemoryTLB[>]PC=%x,PADDR=%x\n",
+      inReg.pc,
+      io.out.bits.paddress
+    )
+  }
+
 }
 
 /** Memory read write stage
@@ -303,6 +346,8 @@ class MemoryReadWriteStage extends Module {
     val loadReservationUpdate = Flipped(new LoadReservationUpdateIO())
     // Recovery interface
     val recover = Input(Bool())
+
+    val hit = Input(Bool())
   })
 
   private val loadReservation = RegInit(new LoadReservationEntry().zero)
@@ -515,4 +560,14 @@ class MemoryReadWriteStage extends Module {
 
     loadReservation := recoveryLoadReservation
   }
+
+  when(io.hit) {
+    printf(
+      "MemoryReadAndWrite[>]PC=%x,RES=%x,ID=%x\n",
+      inReg.pc,
+      io.out.bits.result,
+      io.out.bits.writeID
+    )
+  }
+
 }

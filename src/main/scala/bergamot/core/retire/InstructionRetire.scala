@@ -70,6 +70,8 @@ class InstructionRetire(depth: Int) extends Module {
 
     // Debug
     val debug = new DebugIO()
+
+    val hit = Input(Bool())
   })
   private val debugBreakpoint = RegInit(false.B)
   io.debug.hit := debugBreakpoint
@@ -133,6 +135,10 @@ class InstructionRetire(depth: Int) extends Module {
 
     io.retired.ready := true.B
 
+    when(io.hit) {
+      printf("Status[>]R=Exception\n")
+    }
+
     // when(debugBreakpoint) {
     //   printf("Exception!!!! pc = %x, cause = %d,to = %x\n", entry.pc, entry.executeResult.exceptionCode, io.trap.handlerPC)
     // }
@@ -146,6 +152,10 @@ class InstructionRetire(depth: Int) extends Module {
     io.correctPC := io.trap.handlerPC
 
     io.retired.ready := true.B
+
+    when(io.hit) {
+      printf("Status[>]R=Interrupt\n")
+    }
     // when(debugBreakpoint) {
     //   printf("Interrupt!!!! pc = %x to= %x\n", entry.pc, io.trap.handlerPC)
     // }
@@ -157,6 +167,9 @@ class InstructionRetire(depth: Int) extends Module {
 
     io.retired.ready := true.B
 
+    when(io.hit) {
+      printf("Status[>]R=Recover\n")
+    }
     // when(debugBreakpoint) {
     //   printf(
     //     "spec violate!!!: pc = %x, sepc = %x, real = %x\n",
@@ -178,7 +191,9 @@ class InstructionRetire(depth: Int) extends Module {
     io.correctPC := io.trap.handlerPC
 
     io.retired.ready := true.B
-
+    when(io.hit) {
+      printf("Status[>]R=Xret\n")
+    }
     // when(debugBreakpoint) {
     //   printf(
     //     "xret !!!: pc = %x\n",
@@ -195,6 +210,9 @@ class InstructionRetire(depth: Int) extends Module {
   }
 
   private def gotoFlushPath(id: Int) = {
+    when(io.hit) {
+      printf("Status[>]R=Fence\n")
+    }
     statusReg := Status.dCache
     flushID := id.U
   }
@@ -212,9 +230,9 @@ class InstructionRetire(depth: Int) extends Module {
       io.predictorUpdate.entries(id).address := retireEntries(id).executeResult.real
     }
 
-    // when(retireEntries(id).pc === "hc00146b4".U) {
-    //   debugBreakpoint := true.B
-    // }
+    when(retireEntries(id).pc === "h800006e4".U) {
+      debugBreakpoint := true.B
+    }
     // when(debugBreakpoint) {
     // printf(
     //   "retired instruction: pc = %x , r = %x, v = %d\n",
@@ -236,6 +254,9 @@ class InstructionRetire(depth: Int) extends Module {
     io.csr.wen := true.B
     io.csr.address := retireEntries(id).executeResult.csrAddress
     io.csr.data := retireEntries(id).executeResult.csrData
+    when(io.hit) {
+      printf("Status[>]R=Write CSR %x = %x\n", io.csr.address, io.csr.data)
+    }
   }
 
   private def updateLoadReservation(id: Int) = {
@@ -342,6 +363,7 @@ class InstructionRetire(depth: Int) extends Module {
         // when(debugBreakpoint) {
         //   printf("Fench pc = %d\n", retireEntries(flushID).pc)
         // }
+
         io.recover := true.B
         io.correctPC := retireEntries(flushID).executeResult.real
         io.retired.ready := true.B

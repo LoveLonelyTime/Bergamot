@@ -48,11 +48,16 @@ class Fetch(cacheLineDepth: Int, queueDepth: Int, predictorDepth: Int, pcInit: S
     val correctPC = Input(DataType.address)
     // Recovery interface
     val recover = Input(Bool())
+
+    val hit = Input(Bool())
   })
 
   private val instructionFetcher = Module(new InstructionFetcher(cacheLineDepth))
   private val speculationStage = Module(new SpeculationStage(predictorDepth, pcInit))
   private val instructionQueue = Module(new InstructionQueue(queueDepth))
+
+  instructionFetcher.io.hit := io.hit
+  speculationStage.io.hit := io.hit
 
   speculationStage.io.in := instructionFetcher.io.out
   instructionFetcher.io.pc := speculationStage.io.pc
@@ -101,8 +106,9 @@ class InstructionFetcher(cacheLineDepth: Int) extends Module {
     // Instruction cache request interface
     val icache = new CacheLineRequestIO(cacheLineDepth)
     val recover = Input(Bool())
-  })
 
+    val hit = Input(Bool())
+  })
   // Buffers
   private val itlbWorkReg = RegInit(Vec2(new ITLBWorkEntry()).zero)
   private val cacheLineWorkReg = RegInit(Vec2(new ICacheLineWorkEntry(cacheLineDepth)).zero)
@@ -328,6 +334,33 @@ class InstructionFetcher(cacheLineDepth: Int) extends Module {
     itlbTaskFlag := false.B
     iCacheTaskFlag := false.B
   }
+
+  // Print
+  when(io.hit) {
+    printf(
+      "InstructionFetcher[>]PC=%x,L0=%x: %x | %x | %x | %x | %x | %x | %x | %x,L1=%x: %x | %x | %x | %x | %x | %x | %x | %x\n",
+      io.pc,
+      cacheLineWorkReg(0).address,
+      cacheLineWorkReg(0).content(0),
+      cacheLineWorkReg(0).content(1),
+      cacheLineWorkReg(0).content(2),
+      cacheLineWorkReg(0).content(3),
+      cacheLineWorkReg(0).content(4),
+      cacheLineWorkReg(0).content(5),
+      cacheLineWorkReg(0).content(6),
+      cacheLineWorkReg(0).content(7),
+      cacheLineWorkReg(1).address,
+      cacheLineWorkReg(1).content(0),
+      cacheLineWorkReg(1).content(1),
+      cacheLineWorkReg(1).content(2),
+      cacheLineWorkReg(1).content(3),
+      cacheLineWorkReg(1).content(4),
+      cacheLineWorkReg(1).content(5),
+      cacheLineWorkReg(1).content(6),
+      cacheLineWorkReg(1).content(7)
+    )
+  }
+
 }
 
 /** Instruction extender
@@ -609,6 +642,8 @@ class SpeculationStage(depth: Int, pcInit: String) extends Module {
     val correctPC = Input(DataType.address)
     // Recovery interface
     val recover = Input(Bool())
+
+    val hit = Input(Bool())
   })
 
   // PC register
@@ -643,6 +678,22 @@ class SpeculationStage(depth: Int, pcInit: String) extends Module {
     // Correct PC
     pcReg := io.correctPC
   }
+
+  // Print
+  when(io.hit) {
+    printf(
+      "SpeculationStage[>]I0PC=%x,I0=%x,I0E=%x,I0S=%x,I1PC=%x,I1=%x,I1E=%x,I1S=%x\n",
+      io.out.bits(0).pc,
+      inReg(0).instruction,
+      io.out.bits(0).instruction,
+      io.out.bits(0).spec,
+      io.out.bits(1).pc,
+      inReg(1).instruction,
+      io.out.bits(1).instruction,
+      io.out.bits(1).spec
+    )
+  }
+
 }
 
 /** Instruction queue

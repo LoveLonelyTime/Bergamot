@@ -45,9 +45,14 @@ class ALU extends Module {
     val privilege = Input(PrivilegeType())
     // Recovery interface
     val recover = Input(Bool())
+
+    val hit = Input(Bool())
   })
   private val aluDecodeStage = Module(new ALUDecodeStage())
   private val aluExecuteStage = Module(new ALUExecuteStage())
+
+  aluDecodeStage.io.hit := io.hit
+  aluExecuteStage.io.hit := io.hit
 
   io.in <> aluDecodeStage.io.in
   aluDecodeStage.io.out <> aluExecuteStage.io.in
@@ -81,6 +86,8 @@ class ALUDecodeStage extends Module {
     val privilege = Input(PrivilegeType())
     // Recovery interface
     val recover = Input(Bool())
+
+    val hit = Input(Bool())
   })
   // Pipeline logic
   private val inReg = RegInit(new ExecuteEntry().zero)
@@ -231,6 +238,10 @@ class ALUDecodeStage extends Module {
   when(io.recover) {
     inReg.valid := false.B
   }
+
+  when(io.hit) {
+    printf("ALUDecode[>]V=%x,PC=%x,OP=%x,OP0=%x,OP1=%x\n", inReg.valid, inReg.pc, io.out.bits.op.asUInt, io.out.bits.op1, io.out.bits.op2)
+  }
 }
 
 /** ALU execute stage
@@ -250,6 +261,8 @@ class ALUExecuteStage extends Module {
     val mstatus = Input(DataType.operation)
     // Recovery interface
     val recover = Input(Bool())
+
+    val hit = Input(Bool())
   })
   // Pipeline logic
   private val inReg = RegInit(new ALUExecuteStageEntry().zero)
@@ -424,5 +437,9 @@ class ALUExecuteStage extends Module {
   // Recovery logic
   when(io.recover) {
     inReg.valid := false.B
+  }
+
+  when(io.hit) {
+    printf("ALUExecute[>]PC=%x,RES=%x\n", inReg.pc, io.out.bits.result)
   }
 }
