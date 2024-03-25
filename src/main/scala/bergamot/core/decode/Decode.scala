@@ -221,7 +221,7 @@ class DecodeStage extends Module {
     val fpRs1 = WireInit(false.B)
     when(in.instruction(6, 2) === "b10100".U) {
       fpRs1 := (in.instruction(31, 27) in ("b00000".U, "b00001".U, "b00010".U, "b00011".U, "b01011".U, "b00100".U, "b00101".U, "b10100".U, "b10100".U, "b10100".U /* Basic */, "b11000".U /* fcvt.w.s / fcvt.w.d */, "b11100".U /* fmv.x.w / fclass */, "b01000".U /* fcvt.s.d / fcvt.d.s */ ))
-    }.elsewhen(in.instruction(6, 2) in ("b01001".U, "b10000".U, "b10001".U, "b10010".U, "b10011".U)) {
+    }.elsewhen(in.instruction(6, 2) in ("b10000".U, "b10001".U, "b10010".U, "b10011".U)) {
       fpRs1 := true.B
     }
 
@@ -238,7 +238,7 @@ class DecodeStage extends Module {
     }
 
     val fpRs2 = WireInit(false.B)
-    when(in.instruction(6, 2) in ("b10000".U, "b10001".U, "b10010".U, "b10011".U, "b10100".U)) {
+    when(in.instruction(6, 2) in ("b01001".U, "b10000".U, "b10001".U, "b10010".U, "b10011".U, "b10100".U)) {
       fpRs2 := true.B
     }
 

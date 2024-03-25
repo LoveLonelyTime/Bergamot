@@ -69,7 +69,7 @@ class ExecuteResultEntry extends Bundle {
 
   // Write memory field
   val write = Bool()
-  val writeID = DataType.receipt
+  val writeID = Vec(2, DataType.receipt)
 
   // CSR field
   val writeCSR = Bool()
@@ -120,7 +120,7 @@ class ExecuteResultEntry extends Bundle {
     lrAddress := addr
   }
 
-  def resultMemory(id: UInt) = {
+  def resultMemory(id: Vec[UInt]) = {
     write := true.B
     writeID := id
   }

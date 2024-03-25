@@ -20,7 +20,7 @@ import bergamot.utils.ChiselUtils._
  *
  * List of supported instructions:
  * - I: sb, sh, sw, lb, lh, lw, lbu, lhu
- * - A:
+ * - A: lr.w, sc.w, amoswap.w, amoadd.w, amoxor.w, amoand.w, amoor.w, amomin.w, amomax.w, amominu.w, amomaxu.w
  * - FD: flw, fsw, fld, fsd
  *
  * Copyright (C) 2024-2025 LoveLonelyTime
@@ -322,8 +322,7 @@ class MemoryReadWriteStage extends Module {
   private val inReg = RegInit(new MemoryReadWriteStageEntry().zero)
   private val readResult = RegInit(DataType.operation.zeroAsUInt)
   private val readError = RegInit(false.B)
-  private val allocID = RegInit(DataType.receipt.zeroAsUInt)
-
+  private val allocID = RegInit(VecInit2(DataType.receipt.zero))
   private def scSuccess(vaddress: UInt) = vaddress === loadReservation.address && loadReservation.valid
 
   io.in.ready := statusReg === Status.idle && io.out.ready // Idle
@@ -343,10 +342,13 @@ class MemoryReadWriteStage extends Module {
 
     when(io.in.bits.valid && !io.recover && io.in.bits.error === MemoryErrorCode.none) { // Effective access
       when(io.in.bits.op in MemoryOperationType.readValues) {
-        statusReg := Status.read
+        readResult := 0.U
+        readError := false.B
+
+        statusReg := Status.readBottom
       }.elsewhen(io.in.bits.op in MemoryOperationType.writeValues) {
         when(io.in.bits.op =/= MemoryOperationType.sc || scSuccess(io.in.bits.vaddress)) {
-          statusReg := Status.write
+          statusReg := Status.writeBottom
         }
       }
     }
@@ -354,9 +356,10 @@ class MemoryReadWriteStage extends Module {
 
   // Read FSM
   io.sma <> new SMAReaderIO().zero
-  when(statusReg === Status.read) {
+  when(statusReg in (Status.readBottom, Status.readTop)) {
     io.sma.valid := true.B
-    io.sma.address := inReg.paddress
+    // Address mux
+    io.sma.address := Mux(statusReg === Status.readBottom, inReg.paddress, inReg.paddress + 4.U)
 
     when(inReg.op in MemoryOperationType.byteValues) {
       io.sma.readType := MemoryAccessLength.byte
@@ -367,8 +370,14 @@ class MemoryReadWriteStage extends Module {
     }
 
     when(io.sma.ready) {
-      readResult := io.sma.data
-      readError := io.sma.error
+      // Concat
+      readResult := Mux(
+        statusReg === Status.readBottom,
+        extractBits(CoreConstant.wordWidth)(readResult, 1) ## io.sma.data,
+        io.sma.data ## extractBits(CoreConstant.wordWidth)(readResult, 0)
+      )
+
+      readError := readError || io.sma.error
       statusReg := Status.idle
 
       // Do it need to go to the next step?
@@ -377,7 +386,9 @@ class MemoryReadWriteStage extends Module {
           loadReservation.address := inReg.vaddress
           loadReservation.valid := true.B
         }.elsewhen(inReg.op in MemoryOperationType.amoValues) { // AMO
-          statusReg := Status.write
+          statusReg := Status.writeBottom
+        }.elsewhen(inReg.op === MemoryOperationType.ld && statusReg === Status.readBottom) { // ld
+          statusReg := Status.readTop
         }
       }
     }
@@ -385,7 +396,7 @@ class MemoryReadWriteStage extends Module {
 
   // Write FSM
   io.alloc <> new StoreQueueAllocIO().zero
-  when(statusReg === Status.write) {
+  when(statusReg in (Status.writeBottom, Status.writeTop)) {
     io.alloc.valid := true.B
     // AMO
     val writeData = WireInit(inReg.op1)
@@ -409,8 +420,14 @@ class MemoryReadWriteStage extends Module {
       is(MemoryOperationType.amominu) { writeData := Mux(gtu, readResult, inReg.op1) }
     }
 
-    io.alloc.data := writeData
-    io.alloc.address := inReg.paddress
+    // Address & data mux
+    when(statusReg === Status.writeBottom) {
+      io.alloc.data := extractBits(CoreConstant.wordWidth)(writeData, 0)
+      io.alloc.address := inReg.paddress
+    }.otherwise {
+      io.alloc.data := extractBits(CoreConstant.wordWidth)(writeData, 1)
+      io.alloc.address := inReg.paddress + 4.U
+    }
 
     when(inReg.op in MemoryOperationType.byteValues) {
       io.alloc.writeType := MemoryAccessLength.byte
@@ -421,8 +438,17 @@ class MemoryReadWriteStage extends Module {
     }
 
     when(io.alloc.ready) {
+      when(statusReg === Status.writeBottom) {
+        allocID(0) := io.alloc.id
+      }.otherwise {
+        allocID(1) := io.alloc.id
+      }
+
+      // Do it need to go to the next step?
       statusReg := Status.idle
-      allocID := io.alloc.id
+      when(inReg.op === MemoryOperationType.sd && statusReg === Status.writeBottom) {
+        statusReg := Status.writeTop
+      }
     }
   }
 
@@ -441,7 +467,7 @@ class MemoryReadWriteStage extends Module {
     io.out.bits.result := signExtended(readResult, 15)
   }.elsewhen(inReg.op === MemoryOperationType.lhu) {
     io.out.bits.result := readResult(15, 0)
-  }.elsewhen(inReg.op in (MemoryOperationType.lw :: MemoryOperationType.lr :: MemoryOperationType.amoValues)) {
+  }.elsewhen(inReg.op in (MemoryOperationType.lw :: MemoryOperationType.ld :: MemoryOperationType.lr :: MemoryOperationType.amoValues)) {
     io.out.bits.result := readResult
   }.elsewhen(inReg.op === MemoryOperationType.sc) {
     io.out.bits.result := Mux(scSuccess(inReg.vaddress), 0.U, 1.U)
@@ -449,12 +475,14 @@ class MemoryReadWriteStage extends Module {
   }
 
   // Alloc ID
-  when(inReg.op === MemoryOperationType.sc) { // SC
+  when(inReg.op === MemoryOperationType.sc) { // sc
     when(scSuccess(inReg.vaddress)) {
-      io.out.bits.resultMemory(allocID)
+      io.out.bits.resultMemory(VecInit(allocID(0), allocID(0)))
     }
+  }.elsewhen(inReg.op === MemoryOperationType.sd) { // sd
+    io.out.bits.resultMemory(VecInit(allocID(0), allocID(1)))
   }.elsewhen(inReg.op in MemoryOperationType.writeValues) {
-    io.out.bits.resultMemory(allocID)
+    io.out.bits.resultMemory(VecInit(allocID(0), allocID(0)))
   }
 
   // Exception
@@ -516,7 +544,9 @@ class MemoryReadWriteStage extends Module {
   when(io.recover) {
     inReg.valid := false.B
     // Undo write FSM to prevent writing to store queue
-    when(statusReg === Status.write) { statusReg := Status.idle }
+    when(statusReg in (Status.writeBottom, Status.writeTop)) {
+      statusReg := Status.idle
+    }
 
     loadReservation := recoveryLoadReservation
   }
