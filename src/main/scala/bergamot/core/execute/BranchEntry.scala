@@ -39,10 +39,10 @@ object BranchOperationType extends ChiselEnum {
   */
 class BranchExecuteStageEntry extends Bundle {
   val op = BranchOperationType() // Branch operation type
-  val op1 = DataType.operation // Operand 1
-  val op2 = DataType.operation // Operand 2
-  val add1 = DataType.operation // Address addend 1
-  val add2 = DataType.operation // Address addend 2
+  val op1 = DataType.operation32 // Operand 1
+  val op2 = DataType.operation32 // Operand 2
+  val add1 = DataType.operation32 // Address addend 1
+  val add2 = DataType.operation32 // Address addend 2
   val rd = DataType.receipt // Destination receipt
   val pc = DataType.address // Corresponding PC
   val next = DataType.address // Next PC

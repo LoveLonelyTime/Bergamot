@@ -28,6 +28,8 @@ import bergamot.utils.Sv32
   *
   * @param cacheLineDepth
   *   Instruction cache line depth
+  * @param cacheCellDepth
+  *   Instruction cache cell depth
   * @param queueDepth
   *   Instruction queue depth
   * @param predictorDepth
@@ -35,10 +37,10 @@ import bergamot.utils.Sv32
   * @param pcInit
   *   The initial value of PC when booting the core
   */
-class Fetch(cacheLineDepth: Int, queueDepth: Int, predictorDepth: Int, pcInit: String) extends Module {
+class Fetch(cacheLineDepth: Int, cacheCellDepth: Int, queueDepth: Int, predictorDepth: Int, pcInit: String) extends Module {
   val io = IO(new Bundle {
     val itlb = new TLBRequestIO()
-    val icache = new CacheLineRequestIO(cacheLineDepth)
+    val icache = new CacheLineRequestIO(cacheCellDepth)
     val out = DecoupledIO(Vec2(new DecodeStageEntry()))
     // Address space ID
     val asid = Input(DataType.asid)
@@ -50,7 +52,7 @@ class Fetch(cacheLineDepth: Int, queueDepth: Int, predictorDepth: Int, pcInit: S
     val recover = Input(Bool())
   })
 
-  private val instructionFetcher = Module(new InstructionFetcher(cacheLineDepth))
+  private val instructionFetcher = Module(new InstructionFetcher(cacheLineDepth, cacheCellDepth))
   private val speculationStage = Module(new SpeculationStage(predictorDepth, pcInit))
   private val instructionQueue = Module(new InstructionQueue(queueDepth))
 
@@ -86,11 +88,13 @@ class Fetch(cacheLineDepth: Int, queueDepth: Int, predictorDepth: Int, pcInit: S
   *
   * @param cacheLineDepth
   *   Instruction cache line depth
+  * @param cacheCellDepth
+  *   Instruction cache cell depth
   */
-class InstructionFetcher(cacheLineDepth: Int) extends Module {
-  require(cacheLineDepth % 2 == 0, "Instruction Cache line depth must be a multiple of 2")
-  require(cacheLineDepth >= 4, "Instruction Cache line depth must be greater than or equal 4")
-  require(cacheLineDepth <= 2048, "Instruction Cache line depth is too big")
+class InstructionFetcher(cacheLineDepth: Int, cacheCellDepth: Int) extends Module {
+  require(cacheCellDepth % 2 == 0, "Instruction Cache cell depth must be a multiple of 2")
+  require(cacheCellDepth >= 4, "Instruction Cache cell depth must be greater than or equal 4")
+  require(cacheCellDepth <= 2048, "Instruction Cache cell depth is too big")
 
   val io = IO(new Bundle {
     val out = Output(Vec2(new RawInstructionEntry()))
@@ -99,31 +103,20 @@ class InstructionFetcher(cacheLineDepth: Int) extends Module {
     // Instruction TLB request interface
     val itlb = new TLBRequestIO()
     // Instruction cache request interface
-    val icache = new CacheLineRequestIO(cacheLineDepth)
+    val icache = new CacheLineRequestIO(cacheCellDepth)
     val recover = Input(Bool())
   })
 
   // Buffers
   private val itlbWorkReg = RegInit(Vec2(new ITLBWorkEntry()).zero)
-  private val cacheLineWorkReg = RegInit(Vec2(new ICacheLineWorkEntry(cacheLineDepth)).zero)
-
-  /* The struction of cache address:
-     CacheLineAddress |       CacheLineOffset     | byte offset
-        Remainder     | log2Ceil(cacheLineDepth)  |     1
-   */
+  private val cacheLineWorkReg = RegInit(Vec2(new ICacheLineWorkEntry(cacheCellDepth)).zero)
 
   // Address helper functions
-  private def getCacheLineAddress(address: UInt) =
-    address(CoreConstant.XLEN - 1, log2Ceil(cacheLineDepth) + 1) ## 0.U((log2Ceil(cacheLineDepth) + 1).W)
+  private val split = splitCacheLineAddress(cacheLineDepth, cacheCellDepth) _
+  private val address = split(io.pc)
 
-  private def getNextCacheLineAddress(address: UInt) =
-    (address(CoreConstant.XLEN - 1, log2Ceil(cacheLineDepth) + 1) + 1.U) ## 0.U((log2Ceil(cacheLineDepth) + 1).W)
-
-  private def getCacheLineOffset(address: UInt) =
-    address(log2Ceil(cacheLineDepth), 1)
-
-  private def isInBoundary(address: UInt) =
-    getCacheLineOffset(address) === (cacheLineDepth - 1).U
+  private val alignedCacheLineAddress = address.tag ## address.index ## 0.U((log2Ceil(cacheCellDepth) + 1).W)
+  private val alignedNextCacheLineAddress = ((address.tag ## address.index) + 1.U) ## 0.U((log2Ceil(cacheCellDepth) + 1).W)
 
   // FSM status
   private object Status extends ChiselEnum {
@@ -135,13 +128,13 @@ class InstructionFetcher(cacheLineDepth: Int) extends Module {
   // Match current ITLB
   private val itlbMatch = VecInit2(false.B)
   itlbMatch.zipWithIndex.foreach { case (item, i) =>
-    item := itlbWorkReg(i).valid && itlbWorkReg(i).vpn === Sv32.getVPN(getCacheLineAddress(io.pc))
+    item := itlbWorkReg(i).valid && itlbWorkReg(i).vpn === Sv32.getVPN(alignedCacheLineAddress)
   }
 
   // Match next ITLB
   private val nextITLBMatch = VecInit2(false.B)
   nextITLBMatch.zipWithIndex.foreach { case (item, i) =>
-    item := itlbWorkReg(i).valid && itlbWorkReg(i).vpn === Sv32.getVPN(getNextCacheLineAddress(io.pc))
+    item := itlbWorkReg(i).valid && itlbWorkReg(i).vpn === Sv32.getVPN(alignedNextCacheLineAddress)
   }
 
   private val itlbStatusReg = RegInit(Status.idle)
@@ -154,12 +147,12 @@ class InstructionFetcher(cacheLineDepth: Int) extends Module {
   switch(itlbStatusReg) {
     is(Status.idle) {
       when(!itlbMatch.reduceTree(_ || _)) { // ITLB missing
-        itlbQueryAddressReg := getCacheLineAddress(io.pc)
+        itlbQueryAddressReg := alignedCacheLineAddress
         itlbVictim := 0.U
         itlbTaskFlag := true.B
         itlbStatusReg := Status.request // Request
       }.elsewhen(!nextITLBMatch.reduceTree(_ || _)) { // Next ITLB missing
-        itlbQueryAddressReg := getNextCacheLineAddress(io.pc)
+        itlbQueryAddressReg := alignedNextCacheLineAddress
         itlbVictim := itlbMatch(0) // Victim is another one
         itlbTaskFlag := true.B
         itlbStatusReg := Status.request // Request
@@ -190,13 +183,13 @@ class InstructionFetcher(cacheLineDepth: Int) extends Module {
   // Match current cache line
   private val cacheLineMatch = VecInit2(false.B)
   cacheLineMatch.zipWithIndex.foreach { case (item, i) =>
-    item := cacheLineWorkReg(i).valid && cacheLineWorkReg(i).address === getCacheLineAddress(io.pc)
+    item := cacheLineWorkReg(i).valid && cacheLineWorkReg(i).address === alignedCacheLineAddress
   }
 
   // Match next cache line
   private val nextCacheLineMatch = VecInit2(false.B)
   nextCacheLineMatch.zipWithIndex.foreach { case (item, i) =>
-    item := cacheLineWorkReg(i).valid && cacheLineWorkReg(i).valid && cacheLineWorkReg(i).address === getNextCacheLineAddress(io.pc)
+    item := cacheLineWorkReg(i).valid && cacheLineWorkReg(i).valid && cacheLineWorkReg(i).address === alignedNextCacheLineAddress
   }
 
   private val iCacheStatusReg = RegInit(Status.idle)
@@ -205,7 +198,7 @@ class InstructionFetcher(cacheLineDepth: Int) extends Module {
   private val iCacheVictim = RegInit(0.U)
   private val iCacheTaskFlag = RegInit(false.B)
 
-  io.icache <> new CacheLineRequestIO(cacheLineDepth).zero
+  io.icache <> new CacheLineRequestIO(cacheCellDepth).zero
 
   switch(iCacheStatusReg) {
     is(Status.idle) {
@@ -213,13 +206,13 @@ class InstructionFetcher(cacheLineDepth: Int) extends Module {
         itlbMatch.zip(itlbWorkReg).foreach { case (matched, item) =>
           when(matched) { // ITLB exists
             when(item.error === MemoryErrorCode.none) { // OK
-              iCacheQueryVAddressReg := getCacheLineAddress(io.pc)
-              iCacheQueryPAddressReg := item.ppn ## Sv32.getOffset(getCacheLineAddress(io.pc))
+              iCacheQueryVAddressReg := alignedCacheLineAddress
+              iCacheQueryPAddressReg := item.ppn ## Sv32.getOffset(alignedCacheLineAddress)
               iCacheVictim := 0.U
               iCacheTaskFlag := true.B
               iCacheStatusReg := Status.request // Request
             }.otherwise { // ITLB error
-              cacheLineWorkReg(0).address := getCacheLineAddress(io.pc)
+              cacheLineWorkReg(0).address := alignedCacheLineAddress
               cacheLineWorkReg(0).error := item.error
               cacheLineWorkReg(0).valid := true.B
             }
@@ -230,13 +223,13 @@ class InstructionFetcher(cacheLineDepth: Int) extends Module {
         nextITLBMatch.zip(itlbWorkReg).foreach { case (matched, item) =>
           when(matched) { // Next ITLB exists
             when(item.error === MemoryErrorCode.none) { // OK
-              iCacheQueryVAddressReg := getNextCacheLineAddress(io.pc)
-              iCacheQueryPAddressReg := item.ppn ## Sv32.getOffset(getNextCacheLineAddress(io.pc))
+              iCacheQueryVAddressReg := alignedNextCacheLineAddress
+              iCacheQueryPAddressReg := item.ppn ## Sv32.getOffset(alignedNextCacheLineAddress)
               iCacheVictim := nextVictim
               iCacheTaskFlag := true.B
               iCacheStatusReg := Status.request // Request
             }.otherwise { // ITLB error
-              cacheLineWorkReg(nextVictim).address := getNextCacheLineAddress(io.pc)
+              cacheLineWorkReg(nextVictim).address := alignedNextCacheLineAddress
               cacheLineWorkReg(nextVictim).error := item.error
               cacheLineWorkReg(nextVictim).valid := true.B
             }
@@ -273,9 +266,9 @@ class InstructionFetcher(cacheLineDepth: Int) extends Module {
     .foreach { case ((matched, oppositeMatched), (item, opposite)) =>
       when(matched) { // Cache line exists
         // Collect the location of two instructions
-        val cachelines = Wire(Vec2(new ICacheLineWorkEntry(cacheLineDepth)))
+        val cachelines = Wire(Vec2(new ICacheLineWorkEntry(cacheCellDepth)))
         val pcValues = Wire(Vec2(DataType.address))
-        val offsetValues = pcValues.map(getCacheLineOffset(_))
+        val offsetValues = pcValues.map(split(_).offset)
         val compress = cachelines.zip(offsetValues).map { case (cacheLine, offset) =>
           isCompressInstruction(cacheLine.content(offset))
         }
@@ -284,11 +277,11 @@ class InstructionFetcher(cacheLineDepth: Int) extends Module {
         cachelines(0) := item
         // The PC of next instruction
         pcValues(1) := pcValues(0) + Mux(compress(0), CoreConstant.compressInstructionLength.U, CoreConstant.instructionLength.U)
-        cachelines(1) := Mux(getCacheLineAddress(pcValues(0)) === getCacheLineAddress(pcValues(1)), item, opposite)
+        cachelines(1) := Mux(split(pcValues(0)).aligned === split(pcValues(1)).aligned, item, opposite)
 
         // Output
         io.out.zipWithIndex.foreach { case (out, i) =>
-          when(!cachelines(i).valid || cachelines(i).address =/= getCacheLineAddress(pcValues(i))) { // Skip
+          when(!cachelines(i).valid || cachelines(i).address =/= split(pcValues(i)).aligned) { // Skip
             out.valid := false.B
           }.elsewhen(cachelines(i).error =/= MemoryErrorCode.none) { // Error
             out.error := cachelines(i).error
@@ -297,7 +290,7 @@ class InstructionFetcher(cacheLineDepth: Int) extends Module {
             out.instruction := cachelines(i).content(offsetValues(i))
             out.compress := true.B
             out.valid := true.B
-          }.elsewhen(!isInBoundary(pcValues(i))) { // 32-bits OK
+          }.elsewhen(split(pcValues(i)).offset =/= (cacheCellDepth - 1).U) { // Not a boundary, 32-bits OK
             out.instruction := cachelines(i).content(offsetValues(i) + 1.U) ## cachelines(i).content(offsetValues(i))
             out.compress := false.B
             out.valid := true.B

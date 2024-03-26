@@ -28,6 +28,7 @@ object DataType {
   def immediate = word // raw immediate
   def zimmediate = UInt(5.W) // 5-bits CSR zero-extend immediate
   def receipt = double // broadcast receipt
+  def operation32 = word // ! Compromise from 64 bit to 32 bit !
   def operation = double // operand
   def csr = UInt(12.W) // 12-bits CSR address
   def exceptionCode = UInt(5.W) // 4-bits exception code

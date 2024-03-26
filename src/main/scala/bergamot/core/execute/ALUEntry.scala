@@ -67,8 +67,8 @@ object ALUOperationType extends ChiselEnum {
   */
 class ALUExecuteStageEntry extends Bundle {
   val op = ALUOperationType() // ALU operation type
-  val op1 = DataType.operation // Operand 1
-  val op2 = DataType.operation // Operand 2
+  val op1 = DataType.operation32 // Operand 1
+  val op2 = DataType.operation32 // Operand 2
   val rd = DataType.receipt // Destination receipt
   val csrAddress = DataType.csr // CSR address
   val error = MemoryErrorCode() // Error

@@ -24,15 +24,40 @@ class FlushCacheIO extends Bundle {
   *
   * Request data for an instruction cache line
   *
-  * @param cacheLineDepth
-  *   Size(bits) = 16 * Cache line depth
+  * @param cacheCellDepth
+  *   Size(bits) = 16 * Cache cell depth
   */
-class CacheLineRequestIO(cacheLineDepth: Int) extends Bundle {
-  require(cacheLineDepth > 0 && cacheLineDepth % 2 == 0, "Require 32-bit aligned cache line depth")
+class CacheLineRequestIO(cacheCellDepth: Int) extends Bundle {
+  require(cacheCellDepth > 0 && cacheCellDepth % 2 == 0, "Require 32-bit aligned cache cell depth")
 
-  val address = Output(DataType.address) // Aligned cache line address
-  val data = Input(Vec(cacheLineDepth, UInt(CoreConstant.cacheCellLength.W))) // Group data
+  val address = Output(DataType.address) // Cache line address
+  val data = Input(Vec(cacheCellDepth, UInt(CoreConstant.cacheCellLength.W))) // Group data
   val error = Input(Bool()) // Memory error
   val valid = Output(Bool())
   val ready = Input(Bool())
+}
+
+/** Cache line address
+  *
+  * Each cache line is composed of multiple cache cells.
+  *
+  * Considering compatibility with storage of 16 bit compression instructions, each cache unit is 16 bits.
+  *
+  * @param tag
+  *   The remaining portion of the cache address is called Tag, which is used for set associative cache comparison.
+  * @param index
+  *   Index address of cache line. It is equal to the number of rows in the cache table.
+  * @param offset
+  *   The address of the cache cell in the cache line is called offset.
+  * @param byte
+  *   Byte address within cache cell, 1 bit.
+  */
+case class CacheLineAddress(tag: UInt, index: UInt, offset: UInt, byte: UInt) {
+
+  /** Align address to the cache line
+    *
+    * @return
+    *   Aligned address
+    */
+  def aligned = tag ## index ## 0.U(offset.getWidth.W) ## 0.U
 }
