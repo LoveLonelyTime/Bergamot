@@ -1,8 +1,15 @@
 # Bergamot
 
-![Bergamot](doc/logo-banner.png)
+![GitHub License](https://img.shields.io/github/license/LoveLonelyTime/Bergamot)
+![Static Badge](https://img.shields.io/badge/Built_by-Chisel3-blue)
+![GitHub last commit](https://img.shields.io/github/last-commit/LoveLonelyTime/Bergamot)
+![GitHub top language](https://img.shields.io/github/languages/top/LoveLonelyTime/Bergamot)
+![GitHub Repo stars](https://img.shields.io/github/stars/LoveLonelyTime/Bergamot)
 
-A simple superscalar RV32GC processor.
+
+![Bergamot](doc/bergamot-social-card.png)
+
+An exquisite superscalar RV32GC processor.
 
 Bergamot has ALL the structures of a basic superscalar pipeline:
 
@@ -17,6 +24,10 @@ Bergamot has ALL the structures of a basic superscalar pipeline:
 - Running on FPGA.
 
 And is trying to maintain simplicity as much as possible.
+
+**My documents site is deployed now!**
+
+Interesting? Check out our [Trip](https://lovelonelytime.github.io/Bergamot-doc/)!
 
 ## Architecture
 
