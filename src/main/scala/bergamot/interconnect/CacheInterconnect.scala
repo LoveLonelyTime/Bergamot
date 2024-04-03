@@ -18,16 +18,16 @@ import bergamot.utils.ChiselUtils._
   *
   * Priority arbitration, in1 > in2
   *
-  * @param cacheLineDepth
-  *   Cache line depth
+  * @param cacheCellDepth
+  *   Cache cell depth
   */
-class CacheLineRequest2Interconnect(cacheLineDepth: Int) extends Module {
-  require(cacheLineDepth > 0 && cacheLineDepth % 2 == 0, "Require 32-bit aligned cache line depth")
+class CacheLineRequest2Interconnect(cacheCellDepth: Int) extends Module {
+  require(cacheCellDepth > 0 && cacheCellDepth % 2 == 0, "Require 32-bit aligned cache cell depth")
 
   val io = IO(new Bundle {
-    val in1 = Flipped(new CacheLineRequestIO(cacheLineDepth))
-    val in2 = Flipped(new CacheLineRequestIO(cacheLineDepth))
-    val out = new CacheLineRequestIO(cacheLineDepth)
+    val in1 = Flipped(new CacheLineRequestIO(cacheCellDepth))
+    val in2 = Flipped(new CacheLineRequestIO(cacheCellDepth))
+    val out = new CacheLineRequestIO(cacheCellDepth)
   })
 
   private object Status extends ChiselEnum {
@@ -35,9 +35,9 @@ class CacheLineRequest2Interconnect(cacheLineDepth: Int) extends Module {
   }
   private val statusReg = RegInit(Status.idle)
 
-  io.in1 <> new CacheLineRequestIO(cacheLineDepth).zero
-  io.in2 <> new CacheLineRequestIO(cacheLineDepth).zero
-  io.out <> new CacheLineRequestIO(cacheLineDepth).zero
+  io.in1 <> new CacheLineRequestIO(cacheCellDepth).zero
+  io.in2 <> new CacheLineRequestIO(cacheCellDepth).zero
+  io.out <> new CacheLineRequestIO(cacheCellDepth).zero
 
   when(statusReg === Status.idle) {
     when(io.in1.valid) {

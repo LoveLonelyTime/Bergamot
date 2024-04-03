@@ -150,49 +150,120 @@ class DecodeStage extends Module {
       is("b01011".U) {
         out.instructionType := InstructionType.R
       }
+
+      // F: fadd.s, fsub.s, fmul.s, fdiv.s, fsqrt.s, fsgnj.s, fsgnjn.s, fsgnjx.s, fmin.s, fmax.s, fcvt.w.s, fcvt.wu.s, fmv.x.w, feq.s, flt.s, fle.s, fclass.s, fcvt.s.w, fcvt.s.wu, fmv.w.x
+      // D: fadd.d, fsub.d, fmul.d, fdiv.d, fsqrt.d, fsgnj.d, fsgnjn.d, fsgnjx.d, fmin.d, fmax.d, fcvt.s.d, fcvt.d.s, feq.d, flt.d, fle.d, fclass.d, fcvt.w.d, fcvt.wu.d, fcvt.d.w, fcvt.d.wu
+      is("b10100".U) {
+        out.instructionType := InstructionType.R
+      }
+
+      // F: fmadd.s
+      // D: fmadd.d
+      is("b10000".U) {
+        out.instructionType := InstructionType.R4
+      }
+
+      // F: fmsub.s
+      // D: fmsub.d
+      is("b10001".U) {
+        out.instructionType := InstructionType.R4
+      }
+
+      // F: fnmsub.s
+      // D: fnmsub.d
+      is("b10010".U) {
+        out.instructionType := InstructionType.R4
+      }
+
+      // F: fnmadd.s
+      // D: fnmadd.d
+      is("b10011".U) {
+        out.instructionType := InstructionType.R4
+      }
+
+      // F: flw
+      // D: fld
+      is("b00001".U) {
+        out.instructionType := InstructionType.I
+      }
+
+      // F: fsw
+      // D: fsd
+      is("b01001".U) {
+        out.instructionType := InstructionType.S
+      }
     }
 
     when(in.instruction(1, 0) =/= "b11".U) { // Identification code detection
       out.instructionType := InstructionType.UNK
     }
 
-    // rs1Tozimm (csrrwi, csrrsi, csrrci)
-    // zimm can not occupy the position of rs1
-    val rs1Tozimm = in.instruction(6, 2) === "b11100".U && in.instruction(14)
-
-    // rd: R/I/U/J
-    out.rd := 0.U
-    when(out.instructionType in (InstructionType.R, InstructionType.I, InstructionType.U, InstructionType.J)) {
-      out.rd := in.instruction(11, 7)
+    // rd: R/R4/I/U/J
+    val fpRd = WireInit(false.B)
+    when(in.instruction(6, 2) === "b10100".U) {
+      fpRd := (in.instruction(31, 27) in ("b00000".U, "b00001".U, "b00010".U, "b00011".U, "b01011".U, "b00100".U, "b00101".U, "b10100".U, "b10100".U, "b10100".U /* Basic */, "b11010".U /* fcvt.s.w / fcvt.d.w */, "b01000".U /* fcvt.s.d / fcvt.d.s */, "b11110".U /* fmv.w.x */ ))
+    }.elsewhen(in.instruction(6, 2) in ("b00001".U, "b10000".U, "b10001".U, "b10010".U, "b10011".U)) {
+      fpRd := true.B
     }
 
-    // rs1(zimm): R/I/S/B
-    out.zimm := 0.U
-    out.rs1 := 0.U
-    when(out.instructionType in (InstructionType.R, InstructionType.I, InstructionType.S, InstructionType.B)) {
-      val rs1 = in.instruction(19, 15)
-      when(rs1Tozimm) {
-        out.zimm := rs1
-      }.otherwise {
-        out.rs1 := rs1
-      }
+    out.rd := new RegisterEntry().zero
+    when(out.instructionType in (InstructionType.R, InstructionType.R4, InstructionType.I, InstructionType.U, InstructionType.J)) {
+      out.rd.reg := fpRd ## in.instruction(11, 7)
+      out.rd.mapping := true.B
     }
 
-    // rs2: R/S/B
-    out.rs2 := 0.U
-    when(out.instructionType in (InstructionType.R, InstructionType.S, InstructionType.B)) {
-      out.rs2 := in.instruction(24, 20)
+    // rs1: R/R4/I/S/B
+    val rs1Mapping = WireInit(true.B)
+    when(in.instruction(6, 2) === "b11100".U && in.instruction(14)) { // csrrwi, csrrsi, csrrci
+      rs1Mapping := false.B
     }
 
-    // func3: R/I/S/B
+    val fpRs1 = WireInit(false.B)
+    when(in.instruction(6, 2) === "b10100".U) {
+      fpRs1 := (in.instruction(31, 27) in ("b00000".U, "b00001".U, "b00010".U, "b00011".U, "b01011".U, "b00100".U, "b00101".U, "b10100".U, "b10100".U, "b10100".U /* Basic */, "b11000".U /* fcvt.w.s / fcvt.w.d */, "b11100".U /* fmv.x.w / fclass */, "b01000".U /* fcvt.s.d / fcvt.d.s */ ))
+    }.elsewhen(in.instruction(6, 2) in ("b10000".U, "b10001".U, "b10010".U, "b10011".U)) {
+      fpRs1 := true.B
+    }
+
+    out.rs1 := new RegisterEntry().zero
+    when(out.instructionType in (InstructionType.R, InstructionType.R4, InstructionType.I, InstructionType.S, InstructionType.B)) {
+      out.rs1.reg := fpRs1 ## in.instruction(19, 15)
+      out.rs1.mapping := rs1Mapping
+    }
+
+    // rs2: R/R4/S/B
+    val rs2Mapping = WireInit(true.B)
+    when(in.instruction(6, 2) === "b10100".U && (in.instruction(31, 27) in ("b01000".U, "b11000".U, "b11010".U))) { // fcvt
+      rs2Mapping := false.B
+    }
+
+    val fpRs2 = WireInit(false.B)
+    when(in.instruction(6, 2) in ("b01001".U, "b10000".U, "b10001".U, "b10010".U, "b10011".U, "b10100".U)) {
+      fpRs2 := true.B
+    }
+
+    out.rs2 := new RegisterEntry().zero
+    when(out.instructionType in (InstructionType.R, InstructionType.R4, InstructionType.S, InstructionType.B)) {
+      out.rs2.reg := fpRs2 ## in.instruction(24, 20)
+      out.rs2.mapping := rs2Mapping
+    }
+
+    // rs3: R4
+    out.rs3 := new RegisterEntry().zero
+    when(out.instructionType in InstructionType.R4) {
+      out.rs3.reg := 1.U ## in.instruction(31, 27)
+      out.rs3.mapping := true.B
+    }
+
+    // func3: R/R4/I/S/B
     out.func3 := 0.U
-    when(out.instructionType in (InstructionType.R, InstructionType.I, InstructionType.S, InstructionType.B)) {
+    when(out.instructionType in (InstructionType.R, InstructionType.R4, InstructionType.I, InstructionType.S, InstructionType.B)) {
       out.func3 := in.instruction(14, 12)
     }
 
-    // func7: R/I (srli,srai)
+    // func7: R/R4/I (srli,srai)
     out.func7 := 0.U
-    when(out.instructionType in (InstructionType.R, InstructionType.I)) {
+    when(out.instructionType in (InstructionType.R, InstructionType.R4, InstructionType.I)) {
       out.func7 := in.instruction(31, 25)
     }
 
@@ -213,7 +284,8 @@ class DecodeStage extends Module {
       Seq(
         (in.error =/= MemoryErrorCode.none || out.instructionType === InstructionType.UNK) -> ExecuteQueueType.alu, // Exception handler
         ((out.opcode(6, 2) in ("b11011".U, "b11001".U)) || out.instructionType === InstructionType.B) -> ExecuteQueueType.branch, // jal, jalr, branch
-        ((out.opcode(6, 2) in ("b00000".U, "b01011".U)) || out.instructionType === InstructionType.S) -> ExecuteQueueType.memory // load, store, lr, sc, amo
+        ((out.opcode(6, 2) in ("b00000".U, "b01011".U, "b00001".U)) || out.instructionType === InstructionType.S) -> ExecuteQueueType.memory, // load, store, lr, sc, amo, flx, fsx
+        (out.opcode(6, 2) in ("b10000".U, "b10001".U, "b10010".U, "b10011".U, "b10100".U)) -> ExecuteQueueType.float
       )
     )
 
@@ -271,6 +343,7 @@ class RegisterMappingStage extends Module {
     when(in.valid && in.error === MemoryErrorCode.none) {
       regGroup.rs1 := in.rs1
       regGroup.rs2 := in.rs2
+      regGroup.rs3 := in.rs3
       regGroup.rd := in.rd
     }
   }
@@ -287,12 +360,12 @@ class RegisterMappingStage extends Module {
       // Mapping result
       out.rs1 := mappingGroup.rs1
       out.rs2 := mappingGroup.rs2
+      out.rs3 := mappingGroup.rs3
       out.rd := mappingGroup.rd
 
       out.func3 := in.func3
       out.func7 := in.func7
       out.imm := in.imm
-      out.zimm := in.zimm
 
       out.pc := in.pc
       out.next := in.next
@@ -300,9 +373,9 @@ class RegisterMappingStage extends Module {
       out.valid := in.valid
 
       // Write ROB table
-      robTableWriteEntry.id := mappingGroup.rd
+      robTableWriteEntry.id := mappingGroup.rd.receipt
       robTableWriteEntry.pc := in.pc
-      robTableWriteEntry.rd := in.rd
+      robTableWriteEntry.rd := Mux(in.rd.mapping, in.rd.reg, 0.U)
       robTableWriteEntry.spec := in.spec
       robTableWriteEntry.valid := in.valid
     }
@@ -361,6 +434,7 @@ class IssueStage(executeQueueWidth: Int) extends Module {
   ) {
     matchBroadcast(in.rs1, in.rs1, broadcast)
     matchBroadcast(in.rs2, in.rs2, broadcast)
+    matchBroadcast(in.rs3, in.rs3, broadcast)
   }
 
   // Pipeline logic
@@ -391,12 +465,16 @@ class IssueStage(executeQueueWidth: Int) extends Module {
     io.broadcast.entries.foreach { broadcast =>
       matchBroadcast(queue.enq.bits.rs2, entry.rs2, broadcast)
     }
+    // rs3
+    queue.enq.bits.rs3 := entry.rs3
+    io.broadcast.entries.foreach { broadcast =>
+      matchBroadcast(queue.enq.bits.rs3, entry.rs3, broadcast)
+    }
 
     queue.enq.bits.rd := entry.rd
     queue.enq.bits.func3 := entry.func3
     queue.enq.bits.func7 := entry.func7
     queue.enq.bits.imm := entry.imm
-    queue.enq.bits.zimm := entry.zimm
     queue.enq.bits.pc := entry.pc
     queue.enq.bits.next := entry.next
     queue.enq.bits.error := entry.error

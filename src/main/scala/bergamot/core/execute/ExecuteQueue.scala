@@ -26,8 +26,10 @@ import bergamot.utils.ChiselUtils._
   *   Queue depth
   * @param queueType
   *   Queue type
+  * @param enableRs3
+  *   Is rs3 listening enabled (for FPU)
   */
-abstract class ExecuteQueue(depth: Int, queueType: ExecuteQueueType.Type) extends Module {
+abstract class ExecuteQueue(depth: Int, queueType: ExecuteQueueType.Type, enableRs3: Boolean) extends Module {
   require(depth > 0, "Execute queue depth must be greater than 0")
 
   val io = IO(new Bundle {
@@ -54,8 +56,10 @@ abstract class ExecuteQueue(depth: Int, queueType: ExecuteQueueType.Type) extend
   *   Queue depth
   * @param queueType
   *   Queue type
+  * @param enableRs3
+  *   Is rs3 listening enabled (for FPU)
   */
-class InOrderedExecuteQueue(depth: Int, queueType: ExecuteQueueType.Type) extends ExecuteQueue(depth, queueType) {
+class InOrderedExecuteQueue(depth: Int, queueType: ExecuteQueueType.Type, enableRs3: Boolean) extends ExecuteQueue(depth, queueType, enableRs3) {
 
   // Read/Wirte pointers
   private val queue = RegInit(Vec(depth, new ExecuteEntry()).zero)
@@ -74,7 +78,8 @@ class InOrderedExecuteQueue(depth: Int, queueType: ExecuteQueueType.Type) extend
   io.deq.valid := !emptyReg && // Not empty
     (
       (!queue(readPtr).rs1.pending &&
-        !queue(readPtr).rs2.pending) || // Operands are ready
+        !queue(readPtr).rs2.pending &&
+        (if (enableRs3) !queue(readPtr).rs3.pending else true.B)) || // Operands are ready
         !queue(readPtr).valid // Or invalid
     )
 
@@ -112,6 +117,8 @@ class InOrderedExecuteQueue(depth: Int, queueType: ExecuteQueueType.Type) extend
   ) {
     matchBroadcast(entry.rs1, entry.rs1, broadcast)
     matchBroadcast(entry.rs2, entry.rs2, broadcast)
+    if (enableRs3)
+      matchBroadcast(entry.rs3, entry.rs3, broadcast)
   }
 
   // Write logic
@@ -135,8 +142,10 @@ class InOrderedExecuteQueue(depth: Int, queueType: ExecuteQueueType.Type) extend
   *   Queue depth
   * @param queueType
   *   Queue type
+  * @param enableRs3
+  *   Is rs3 listening enabled (for FPU)
   */
-class OutOfOrderedExecuteQueue(depth: Int, queueType: ExecuteQueueType.Type) extends ExecuteQueue(depth, queueType) {
+class OutOfOrderedExecuteQueue(depth: Int, queueType: ExecuteQueueType.Type, enableRs3: Boolean) extends ExecuteQueue(depth, queueType, enableRs3) {
 
   /** Double buffer cell
     */
@@ -162,7 +171,8 @@ class OutOfOrderedExecuteQueue(depth: Int, queueType: ExecuteQueueType.Type) ext
     io.enq.ready := (stateReg === State.empty || stateReg === State.one)
     io.sideDeq.valid := (stateReg === State.one || stateReg === State.two) &&
       ((!dataReg.rs1.pending && // Operands are ready
-        !dataReg.rs2.pending) || // Or invalid
+        !dataReg.rs2.pending &&
+        (if (enableRs3) !dataReg.rs3.pending else true.B)) || // Or invalid
         !dataReg.valid)
 
     io.deq.valid := (stateReg === State.one || stateReg === State.two) && !io.sideDeq.valid
@@ -175,11 +185,17 @@ class OutOfOrderedExecuteQueue(depth: Int, queueType: ExecuteQueueType.Type) ext
       // Bypass
       matchBroadcast(io.deq.bits.rs1, dataReg.rs1, broadcast)
       matchBroadcast(io.deq.bits.rs2, dataReg.rs2, broadcast)
+      if (enableRs3)
+        matchBroadcast(io.deq.bits.rs3, dataReg.rs3, broadcast)
       // Listen
       matchBroadcast(dataReg.rs1, dataReg.rs1, broadcast)
-      matchBroadcast(dataReg.rs2, dataReg.rs2, broadcast)
       matchBroadcast(shadowReg.rs1, shadowReg.rs1, broadcast)
+      matchBroadcast(dataReg.rs2, dataReg.rs2, broadcast)
       matchBroadcast(shadowReg.rs2, shadowReg.rs2, broadcast)
+      if (enableRs3) {
+        matchBroadcast(dataReg.rs3, dataReg.rs3, broadcast)
+        matchBroadcast(shadowReg.rs3, shadowReg.rs3, broadcast)
+      }
     }
 
     // Double buffer write logic
@@ -211,6 +227,8 @@ class OutOfOrderedExecuteQueue(depth: Int, queueType: ExecuteQueueType.Type) ext
           io.broadcast.entries.foreach { broadcast => // Bypass
             matchBroadcast(dataReg.rs1, shadowReg.rs1, broadcast)
             matchBroadcast(dataReg.rs2, shadowReg.rs2, broadcast)
+            if (enableRs3)
+              matchBroadcast(dataReg.rs3, shadowReg.rs3, broadcast)
           }
           stateReg := State.one
         }

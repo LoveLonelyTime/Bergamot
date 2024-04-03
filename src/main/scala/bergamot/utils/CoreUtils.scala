@@ -6,6 +6,7 @@ import chisel3.util._
 import bergamot.core._
 import bergamot.core.broadcast.DataBroadcastSlotEntry
 import bergamot.core.broadcast.DataBroadcastEntry
+import bergamot.cache.CacheLineAddress
 
 /*
  * Core utils
@@ -121,38 +122,24 @@ object CoreUtils {
     */
   def getWordAddress(address: UInt) = address(CoreConstant.XLEN - 1, 2)
 
-  /** Get cache line tag
+  /** Split cache line address
     *
-    * @param address
-    *   Address
-    * @param tagDepth
-    *   Tag depth
-    * @return
-    *   Tag
-    */
-  def getCacheLineTag(address: UInt, tagDepth: Int) = address(CoreConstant.XLEN - 1, CoreConstant.XLEN - log2Ceil(tagDepth))
-
-  /** Get cache line address
-    *
-    * @param address
-    *   Address
     * @param cacheLineDepth
     *   Cache line depth
-    * @return
-    *   Cache line address
-    */
-  def getCacheLineAddress(address: UInt, cacheLineDepth: Int) = address(CoreConstant.XLEN - 1, log2Ceil(cacheLineDepth) + 1) ## 0.U((log2Ceil(cacheLineDepth) + 1).W)
-
-  /** Get cache line offset
-    *
+    * @param cacheCellDepth
+    *   Cache cell depth
     * @param address
-    *   Address
-    * @param cacheLineDepth
-    *   Cache line depth
+    *   Address to be splited
     * @return
-    *   Cache line offset
+    *   Address case object
     */
-  def getCacheLineOffset(address: UInt, cacheLineDepth: Int) = address(log2Ceil(cacheLineDepth), 1)
+  def splitCacheLineAddress(cacheLineDepth: Int, cacheCellDepth: Int)(address: UInt) =
+    CacheLineAddress(
+      address(CoreConstant.XLEN - 1, log2Ceil(cacheLineDepth) + log2Ceil(cacheCellDepth) + 1),
+      address(log2Ceil(cacheLineDepth) + log2Ceil(cacheCellDepth), log2Ceil(cacheCellDepth) + 1),
+      address(log2Ceil(cacheCellDepth), 1),
+      address(0)
+    )
 
   /** Extract bits
     * @param width

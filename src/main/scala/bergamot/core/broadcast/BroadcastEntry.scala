@@ -23,6 +23,16 @@ class DataBroadcastSlotEntry extends Bundle {
   // When it has been received, receipt field is data received
   // Otherwise, receipt field is broadcast receipt
   val receipt = DataType.receipt
+  val origin = DataType.register // Original register number
+}
+
+/** Data broadcast send entry
+  *
+  * Record rs
+  */
+class DataBroadcastSendEntry extends Bundle {
+  val receipt = DataType.receipt
+  val origin = DataType.register // Original register number
 }
 
 /** Data broadcast entry

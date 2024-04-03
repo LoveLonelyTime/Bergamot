@@ -38,9 +38,10 @@ class StoreQueueDequeueEntry extends Bundle {
   */
 class StoreQueueRetireIO extends Bundle {
   val entries = Output(
-    Vec2(
+    Vec(
+      2,
       new Bundle {
-        val id = DataType.receipt
+        val id = Vec2(DataType.receipt)
         val valid = Bool()
       }
     )

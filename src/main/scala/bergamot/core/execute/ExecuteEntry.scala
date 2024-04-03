@@ -5,6 +5,7 @@ import chisel3.util._
 
 import bergamot.core._
 import bergamot.core.broadcast.DataBroadcastSlotEntry
+import bergamot.core.broadcast.DataBroadcastSendEntry
 import bergamot.core.decode.InstructionType
 
 /*
@@ -42,11 +43,11 @@ class ExecuteEntry extends Bundle {
   val instructionType = InstructionType() // Instruction Type
   val rs1 = new DataBroadcastSlotEntry() // rs1
   val rs2 = new DataBroadcastSlotEntry() // rs2
-  val rd = DataType.receipt // rd
+  val rs3 = new DataBroadcastSlotEntry() // rs3
+  val rd = new DataBroadcastSendEntry() // rd
   val func3 = DataType.func3 // func3
   val func7 = DataType.func7 // func7
   val imm = DataType.immediate // Immediate
-  val zimm = DataType.zimmediate // CSR zimm
   val pc = DataType.address // Corresponding PC
   val next = DataType.address // Next PC
   val error = MemoryErrorCode() // Error
@@ -68,7 +69,7 @@ class ExecuteResultEntry extends Bundle {
 
   // Write memory field
   val write = Bool()
-  val writeID = DataType.receipt
+  val writeID = Vec(2, DataType.receipt)
 
   // CSR field
   val writeCSR = Bool()
@@ -119,7 +120,7 @@ class ExecuteResultEntry extends Bundle {
     lrAddress := addr
   }
 
-  def resultMemory(id: UInt) = {
+  def resultMemory(id: Vec[UInt]) = {
     write := true.B
     writeID := id
   }

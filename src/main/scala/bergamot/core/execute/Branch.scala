@@ -109,7 +109,7 @@ class BranchDecodeStage extends Module {
     io.out.bits.add2 := signExtended(inReg.imm, 12)
   }
 
-  io.out.bits.rd := inReg.rd
+  io.out.bits.rd := inReg.rd.receipt
   io.out.bits.pc := inReg.pc
   io.out.bits.next := inReg.next
   io.out.bits.valid := inReg.valid

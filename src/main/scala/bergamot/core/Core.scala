@@ -25,6 +25,7 @@ import bergamot.core.execute.ExecuteQueueType
 import bergamot.core.execute.Branch
 import bergamot.core.execute.Memory
 import bergamot.core.execute.ALU
+import bergamot.core.execute.FPU
 import bergamot.core.execute.ExecuteResultEntry
 import bergamot.core.execute.OutOfOrderedExecuteQueue
 import bergamot.core.execute.LoadReservationUpdateIO
@@ -61,7 +62,7 @@ import bergamot.utils.CoreUtils._
 /** Core config class
   *
   * @param iTLBDepth
-  * @param cacheLineDepth
+  * @param cacheCellDepth
   * @param fetchQueueDepth
   * @param executeQueueWidth
   * @param executeQueueDepth
@@ -71,7 +72,7 @@ import bergamot.utils.CoreUtils._
   * @param predictorDepth
   * @param pcInit
   */
-case class CoreConfig(iTLBDepth: Int, cacheLineDepth: Int, fetchQueueDepth: Int, executeQueueWidth: Int, executeQueueDepth: Int, dTLBDepth: Int, storeQueueDepth: Int, robDepth: Int, predictorDepth: Int, pcInit: String, l1CacheDepth: Int, l1CacheWay: Int, l2CacheDepth: Int, l2CacheWay: Int, memoryAddress: String)
+case class CoreConfig(iTLBDepth: Int, cacheCellDepth: Int, fetchQueueDepth: Int, executeQueueWidth: Int, executeQueueDepth: Int, dTLBDepth: Int, storeQueueDepth: Int, robDepth: Int, predictorDepth: Int, pcInit: String, l1CacheDepth: Int, l1CacheWay: Int, l2CacheDepth: Int, l2CacheWay: Int, memoryAddress: String)
 
 object CoreConfig {
 
@@ -79,9 +80,9 @@ object CoreConfig {
     */
   val default = CoreConfig(
     iTLBDepth = 8,
-    cacheLineDepth = 8,
+    cacheCellDepth = 8,
     fetchQueueDepth = 8,
-    executeQueueWidth = 3,
+    executeQueueWidth = 4,
     executeQueueDepth = 8,
     dTLBDepth = 8,
     storeQueueDepth = 8,
@@ -120,12 +121,12 @@ class BergamotCore(config: CoreConfig) extends Module {
 
   private val tlbFlusher = Module(new Parallel2Flusher())
 
-  private val cacheLineRequest2Interconnect = Module(new CacheLineRequest2Interconnect(config.cacheLineDepth))
+  private val cacheLineRequest2Interconnect = Module(new CacheLineRequest2Interconnect(config.cacheCellDepth))
 
-  private val l2Cache = Module(new SetCache(config.l2CacheDepth, config.l2CacheWay, config.cacheLineDepth))
+  private val l2Cache = Module(new SetCache(config.l2CacheWay, config.l2CacheDepth, config.cacheCellDepth))
 
   private val axiMaster = Module(new AXIMaster())
-  private val cacheLineRequest2SMA = Module(new CacheLineRequest2SMA(config.cacheLineDepth))
+  private val cacheLineRequest2SMA = Module(new CacheLineRequest2SMA(config.l2CacheDepth, config.cacheCellDepth))
   private val sma2ReaderInterconnect = Module(new SMA2ReaderInterconnect())
 
   // CoreFrontend
@@ -149,6 +150,7 @@ class BergamotCore(config: CoreConfig) extends Module {
   coreExecute.io.privilege := coreBackend.io.privilege
   coreExecute.io.mstatus := coreBackend.io.mstatus
   coreExecute.io.satp := coreBackend.io.satp
+  coreExecute.io.fcsr := coreBackend.io.fcsr
   coreExecute.io.recover := coreBackend.io.recover
 
   // CoreBackend
@@ -189,7 +191,7 @@ class BergamotCore(config: CoreConfig) extends Module {
   */
 class CoreFrontend(config: CoreConfig) extends Module {
   val io = IO(new Bundle {
-    val cacheLineRequest = new CacheLineRequestIO(config.cacheLineDepth)
+    val cacheLineRequest = new CacheLineRequestIO(config.cacheCellDepth)
     val broadcast = Flipped(new DataBroadcastIO())
     val enqs = Vec(config.executeQueueWidth, new ExecuteQueueEnqueueIO())
 
@@ -210,13 +212,13 @@ class CoreFrontend(config: CoreConfig) extends Module {
   })
 
   private val itlb = Module(new TLB(config.iTLBDepth, false))
-  private val iCache = Module(new SetCache(config.l1CacheDepth, config.l1CacheWay, config.cacheLineDepth))
-  private val fetch = Module(new Fetch(config.cacheLineDepth, config.fetchQueueDepth, config.predictorDepth, config.pcInit))
+  private val iCache = Module(new SetCache(config.l1CacheWay, config.l1CacheDepth, config.cacheCellDepth))
+  private val fetch = Module(new Fetch(config.l1CacheDepth, config.cacheCellDepth, config.fetchQueueDepth, config.predictorDepth, config.pcInit))
   private val decode = Module(new Decode(config.executeQueueWidth))
   private val registerMappingTable = Module(new RegisterMappingTable())
 
-  private val sma2CacheLineRequest = Module(new SMA2CacheLineRequest(config.cacheLineDepth))
-  private val cacheLineRequest2Interconnect = Module(new CacheLineRequest2Interconnect(config.cacheLineDepth))
+  private val sma2CacheLineRequest = Module(new SMA2CacheLineRequest(config.l1CacheDepth, config.cacheCellDepth))
+  private val cacheLineRequest2Interconnect = Module(new CacheLineRequest2Interconnect(config.cacheCellDepth))
 
   // ITLB
   itlb.io.sma <> sma2CacheLineRequest.io.smaReader
@@ -274,13 +276,14 @@ class CoreExecute(config: CoreConfig) extends Module {
     val csr = Flipped(new CSRsReadIO())
     val broadcast = Flipped(new DataBroadcastIO())
 
-    val cacheLineRequest = new CacheLineRequestIO(config.cacheLineDepth)
+    val cacheLineRequest = new CacheLineRequestIO(config.cacheCellDepth)
     val smaWriter = new SMAWriterIO()
     val ioSMAReader = new SMAReaderIO()
 
     val privilege = Input(PrivilegeType())
     val satp = Input(DataType.operation)
     val mstatus = Input(DataType.operation)
+    val fcsr = Input(DataType.operation)
 
     val dTLBFlush = Flipped(new FlushCacheIO())
     val dCacheFlush = Flipped(new FlushCacheIO())
@@ -292,32 +295,37 @@ class CoreExecute(config: CoreConfig) extends Module {
   })
 
   private val aluExecuteQueue =
-    Module(new OutOfOrderedExecuteQueue(config.executeQueueDepth, ExecuteQueueType.alu))
+    Module(new OutOfOrderedExecuteQueue(config.executeQueueDepth, ExecuteQueueType.alu, false))
   private val alu = Module(new ALU())
 
   private val branchExecuteQueue =
-    Module(new OutOfOrderedExecuteQueue(config.executeQueueDepth, ExecuteQueueType.branch))
+    Module(new OutOfOrderedExecuteQueue(config.executeQueueDepth, ExecuteQueueType.branch, false))
   private val branch = Module(new Branch())
 
   private val memoryExecuteQueue =
-    Module(new InOrderedExecuteQueue(config.executeQueueDepth, ExecuteQueueType.memory))
+    Module(new InOrderedExecuteQueue(config.executeQueueDepth, ExecuteQueueType.memory, false))
   private val memory = Module(new Memory())
+
+  private val fpuExecuteQueue =
+    Module(new OutOfOrderedExecuteQueue(config.executeQueueDepth, ExecuteQueueType.float, true)) // Enable rs3
+  private val fpu = Module(new FPU())
 
   private val storeQueue = Module(new StoreQueue(config.storeQueueDepth))
   private val storeQueueMemoryWriter = Module(new StoreQueueMemoryWriter())
   private val smaWithStoreQueueInterconnect = Module(new SMAWithStoreQueueInterconnect())
 
   private val dtlb = Module(new TLB(config.dTLBDepth, true))
-  private val dCache = Module(new SetCache(config.l1CacheDepth, config.l1CacheWay, config.cacheLineDepth))
+  private val dCache = Module(new SetCache(config.l1CacheWay, config.l1CacheDepth, config.cacheCellDepth))
 
-  private val sma2CacheLineRequestTLB = Module(new SMA2CacheLineRequest(config.cacheLineDepth))
-  private val sma2CacheLineRequestStore = Module(new SMA2CacheLineRequest(config.cacheLineDepth))
+  private val sma2CacheLineRequestTLB = Module(new SMA2CacheLineRequest(config.l1CacheDepth, config.cacheCellDepth))
+  private val sma2CacheLineRequestStore = Module(new SMA2CacheLineRequest(config.l1CacheDepth, config.cacheCellDepth))
   private val skipCacheSMAReaderInterconnect = Module(new SkipCacheSMAReaderInterconnect(config.memoryAddress))
-  private val cacheLineRequest2Interconnect = Module(new CacheLineRequest2Interconnect(config.cacheLineDepth))
+  private val cacheLineRequest2Interconnect = Module(new CacheLineRequest2Interconnect(config.cacheCellDepth))
   // Enqueue
   io.enqs(0) <> aluExecuteQueue.io.enqAndType
   io.enqs(1) <> branchExecuteQueue.io.enqAndType
   io.enqs(2) <> memoryExecuteQueue.io.enqAndType
+  io.enqs(3) <> fpuExecuteQueue.io.enqAndType
 
   // DTLB
   dtlb.io.sma <> sma2CacheLineRequestTLB.io.smaReader
@@ -375,6 +383,13 @@ class CoreExecute(config: CoreConfig) extends Module {
   memoryExecuteQueue.io.broadcast <> io.broadcast
   memoryExecuteQueue.io.recover := io.recover
 
+  // FPU
+  fpu.io.in <> fpuExecuteQueue.io.deq
+  fpu.io.fcsr := io.fcsr
+  fpu.io.recover := io.recover
+  fpuExecuteQueue.io.broadcast <> io.broadcast
+  fpuExecuteQueue.io.recover := io.recover
+
   // CacheLineRequest2Interconnect
   cacheLineRequest2Interconnect.io.out <> io.cacheLineRequest
 
@@ -382,6 +397,7 @@ class CoreExecute(config: CoreConfig) extends Module {
   io.deqs(0) <> alu.io.out
   io.deqs(1) <> branch.io.out
   io.deqs(2) <> memory.io.out
+  io.deqs(3) <> fpu.io.out
 }
 
 /** Core backend
@@ -409,6 +425,7 @@ class CoreBackend(config: CoreConfig) extends Module {
     val privilege = Output(PrivilegeType())
     val mstatus = Output(DataType.operation)
     val satp = Output(DataType.operation)
+    val fcsr = Output(DataType.operation)
 
     val dCacheFlush = new FlushCacheIO()
     val iCacheFlush = new FlushCacheIO()
@@ -460,6 +477,7 @@ class CoreBackend(config: CoreConfig) extends Module {
   io.privilege := csr.io.privilege
   io.mstatus := csr.io.mstatus
   io.satp := csr.io.satp
+  io.fcsr := csr.io.fcsr
   csr.io.mtime := io.mtime
   csr.io.mtimeIRQ := io.mtimeIRQ
 }

@@ -196,7 +196,7 @@ class ALUDecodeStage extends Module {
         io.csr.address := inReg.imm(11, 0)
 
         io.out.bits.op1 := io.csr.data
-        io.out.bits.op2 := Mux(inReg.func3(2), inReg.zimm, inReg.rs1.receipt)
+        io.out.bits.op2 := Mux(inReg.func3(2), inReg.rs1.origin, inReg.rs1.receipt)
 
         /*
          * Special protection is in CSRs
@@ -219,7 +219,7 @@ class ALUDecodeStage extends Module {
     }
   }
 
-  io.out.bits.rd := inReg.rd
+  io.out.bits.rd := inReg.rd.receipt
   io.out.bits.pc := inReg.pc
   io.out.bits.next := inReg.next
   io.out.bits.valid := inReg.valid

@@ -112,7 +112,7 @@ class StoreQueue(depth: Int) extends Module {
 
   // Bypass logic
   private val laneStrobes = VecInit.fill(4)(false.B)
-  private val laneData = VecInit.fill(4)(DataType.aByte.zeroAsUInt)
+  private val laneData = VecInit.fill(4)(DataType.byte.zeroAsUInt)
 
   // TODO: I want to optimize this code snippet
   // Overlapping window
@@ -243,8 +243,10 @@ class StoreQueue(depth: Int) extends Module {
   // Retire logic
   io.retire.entries.foreach { entry =>
     when(entry.valid) {
-      queue(entry.id).retire := true.B
-      queue(entry.id).valid := true.B // Recovery bypass
+      entry.id.foreach { id =>
+        queue(id).retire := true.B
+        queue(id).valid := true.B // Recovery bypass
+      }
     }
   }
 }
