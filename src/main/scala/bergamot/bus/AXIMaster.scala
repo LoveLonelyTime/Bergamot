@@ -38,31 +38,35 @@ class AXIMaster extends Module {
   io.axi <> new AXIMasterIO().zero
 
   private object AXIStatus extends ChiselEnum {
-    val idle, address, data, response = Value;
+    val idle, readAddress, readResponse, writeAddress, writeData, writeResponse = Value;
   }
 
   // Reader FSM
-  private val readerStatusReg = RegInit(AXIStatus.idle)
+  private val statusReg = RegInit(AXIStatus.idle)
 
-  switch(readerStatusReg) {
+  switch(statusReg) {
+    // Idle
     is(AXIStatus.idle) {
-      when(io.smaReader.valid) {
-        readerStatusReg := AXIStatus.address
+      when(io.smaWriter.valid) {
+        statusReg := AXIStatus.writeAddress
+      }.elsewhen(io.smaReader.valid) {
+        statusReg := AXIStatus.readAddress
       }
     }
 
-    is(AXIStatus.address) {
+    // Read
+    is(AXIStatus.readAddress) {
       // Align address to word
       io.axi.ARADDR := align(io.smaReader.address, ALIGN_WORD)
-      io.axi.ARPORT := 0.U // Ignore port?
+      io.axi.ARPROT := 0.U // Ignore port?
       io.axi.ARVALID := true.B
 
       when(io.axi.ARREADY) {
-        readerStatusReg := AXIStatus.response
+        statusReg := AXIStatus.readResponse
       }
     }
 
-    is(AXIStatus.response) {
+    is(AXIStatus.readResponse) {
       io.axi.RREADY := true.B
 
       when(io.axi.RVALID) {
@@ -91,32 +95,23 @@ class AXIMaster extends Module {
         io.smaReader.error := io.axi.RRESP =/= 0.U
         io.smaReader.ready := true.B
 
-        readerStatusReg := AXIStatus.idle
-      }
-    }
-  }
-
-  // Writer FSM
-  private val writerStatusReg = RegInit(AXIStatus.idle)
-
-  switch(writerStatusReg) {
-    is(AXIStatus.idle) {
-      when(io.smaWriter.valid) {
-        writerStatusReg := AXIStatus.address
+        statusReg := AXIStatus.idle
       }
     }
 
-    is(AXIStatus.address) {
+
+    // Write
+    is(AXIStatus.writeAddress) {
       io.axi.AWADDR := align(io.smaWriter.address, ALIGN_WORD)
-      io.axi.AWPORT := 0.U
+      io.axi.AWPROT := 0.U
       io.axi.AWVALID := true.B
 
       when(io.axi.AWREADY) {
-        writerStatusReg := AXIStatus.data
+        statusReg := AXIStatus.writeData
       }
     }
 
-    is(AXIStatus.data) {
+    is(AXIStatus.writeData) {
       switch(io.smaWriter.writeType) {
         is(MemoryAccessLength.byte) {
           val data = extractBits(CoreConstant.byteWidth)(io.smaWriter.data, 0)
@@ -153,17 +148,26 @@ class AXIMaster extends Module {
 
       io.axi.WVALID := true.B
       when(io.axi.WREADY) {
-        writerStatusReg := AXIStatus.response
+        statusReg := AXIStatus.writeResponse
       }
     }
 
-    is(AXIStatus.response) {
+    is(AXIStatus.writeResponse) {
       io.axi.BREADY := true.B
       when(io.axi.BVALID) {
         io.smaWriter.ready := true.B
         io.smaWriter.error := io.axi.BRESP =/= 0.U
-        writerStatusReg := AXIStatus.idle
+        statusReg := AXIStatus.idle
       }
     }
+  }
+
+  // AXI reset transmission
+  // To end unfinished transactions during reset period
+  when(reset.asBool){
+    io.axi.RREADY := true.B
+    io.axi.WVALID := true.B
+    io.axi.WSTRB := 0.U
+    io.axi.BREADY := true.B
   }
 }

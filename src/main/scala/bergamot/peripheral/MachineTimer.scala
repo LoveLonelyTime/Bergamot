@@ -44,63 +44,89 @@ class MachineTimer(base: String) extends Module {
 
   io.axi <> new AXIMasterIO().zero
 
+  private object AXIStatus extends ChiselEnum {
+    val idle, writeData, readResponse, writeResponse = Value;
+  }
+
+  // Status
+  private val statusReg = RegInit(AXIStatus.idle)
+
   // AXI logic
-  private val readAddressReg = RegInit(0.U(32.W))
+  private val addressReg = RegInit(0.U(32.W))
 
-  when(io.axi.ARVALID) {
-    io.axi.ARREADY := true.B
-    readAddressReg := io.axi.ARADDR - base.U
-  }
-
-  io.axi.RVALID := true.B
-  io.axi.RRESP := 0.U
-
-  switch(readAddressReg) {
-    is(MachineTimer.MTIMECMPL) { // mtimecmpl
-      io.axi.RDATA := mtimecmpReg(31, 0)
-    }
-    is(MachineTimer.MTIMECMPH) { // mtimecmph
-      io.axi.RDATA := mtimecmpReg(63, 32)
-    }
-    is(MachineTimer.MTIMEL) { // mtimel
-      io.axi.RDATA := mtimeReg(31, 0)
-    }
-    is(MachineTimer.MTIMEH) { // mtimeh
-      io.axi.RDATA := mtimeReg(63, 32)
-    }
-  }
-
-  private val writeAddressReg = RegInit(0.U(32.W))
-
-  when(io.axi.AWVALID) {
-    io.axi.AWREADY := true.B
-    writeAddressReg := io.axi.AWADDR - base.U
-  }
-
-  when(io.axi.WVALID) {
-    io.axi.WREADY := true.B
-    val data = io.axi.WDATA
-    // printf("Current time: %d\n", mtimeReg)
-    switch(writeAddressReg) {
-      is(MachineTimer.MTIMECMPL) { // mtimecmpl
-        mtimecmpReg := mtimecmpReg(63, 32) ## data
-        // printf("MTIMER: set mtimecmp = %d\n", mtimecmpReg(63, 32) ## data)
-      }
-      is(MachineTimer.MTIMECMPH) { // mtimecmph
-        mtimecmpReg := data ## mtimecmpReg(31, 0)
-        // printf("MTIMER: set mtimecmp = %d\n", data ## mtimecmpReg(31, 0))
-      }
-      is(MachineTimer.MTIMEL) { // mtimel
-        mtimeReg := mtimeReg(63, 32) ## data
-        // printf("MTIMER: set mtime = %d\n", mtimeReg(63, 32) ## data)
-      }
-      is(MachineTimer.MTIMEH) { // mtimeh
-        mtimeReg := data ## mtimeReg(31, 0)
-        // printf("MTIMER: set mtime = %d\n", data ## mtimeReg(31, 0))
+  switch(statusReg){
+    // Idle
+    is(AXIStatus.idle){
+      when(io.axi.AWVALID){
+        io.axi.AWREADY := true.B
+        addressReg := io.axi.AWADDR - base.U
+        statusReg := AXIStatus.writeData
+      }.elsewhen(io.axi.ARVALID) {
+        io.axi.ARREADY := true.B
+        addressReg := io.axi.ARADDR - base.U
+        statusReg:= AXIStatus.readResponse
       }
     }
-  }
 
-  io.axi.BVALID := true.B
-  io.axi.BRESP := 0.U
+    // Read
+    is(AXIStatus.readResponse){
+      io.axi.RVALID := true.B
+      io.axi.RRESP := 0.U
+      switch(addressReg) {
+        is(MachineTimer.MTIMECMPL) { // mtimecmpl
+          io.axi.RDATA := mtimecmpReg(31, 0)
+        }
+        is(MachineTimer.MTIMECMPH) { // mtimecmph
+          io.axi.RDATA := mtimecmpReg(63, 32)
+        }
+        is(MachineTimer.MTIMEL) { // mtimel
+          io.axi.RDATA := mtimeReg(31, 0)
+        }
+        is(MachineTimer.MTIMEH) { // mtimeh
+          io.axi.RDATA := mtimeReg(63, 32)
+        }
+      }
+
+      when(io.axi.RREADY){
+        statusReg:= AXIStatus.idle
+      }
+    }
+
+    // Write
+    is(AXIStatus.writeData){
+      io.axi.WREADY := true.B
+      when(io.axi.WVALID){
+        val data = io.axi.WDATA
+        // printf("Current time: %d\n", mtimeReg)
+        switch(addressReg) {
+          is(MachineTimer.MTIMECMPL) { // mtimecmpl
+            mtimecmpReg := mtimecmpReg(63, 32) ## data
+            // printf("MTIMER: set mtimecmp = %d\n", mtimecmpReg(63, 32) ## data)
+          }
+          is(MachineTimer.MTIMECMPH) { // mtimecmph
+            mtimecmpReg := data ## mtimecmpReg(31, 0)
+            // printf("MTIMER: set mtimecmp = %d\n", data ## mtimecmpReg(31, 0))
+          }
+          is(MachineTimer.MTIMEL) { // mtimel
+            mtimeReg := mtimeReg(63, 32) ## data
+            // printf("MTIMER: set mtime = %d\n", mtimeReg(63, 32) ## data)
+          }
+          is(MachineTimer.MTIMEH) { // mtimeh
+            mtimeReg := data ## mtimeReg(31, 0)
+            // printf("MTIMER: set mtime = %d\n", data ## mtimeReg(31, 0))
+          }
+        }
+        statusReg:= AXIStatus.writeResponse
+      }
+    }
+
+    is(AXIStatus.writeResponse){
+      io.axi.BVALID := true.B
+      io.axi.BRESP := 0.U
+
+      when(io.axi.BREADY){
+        statusReg:= AXIStatus.idle
+      }
+    }
+  }  
 }

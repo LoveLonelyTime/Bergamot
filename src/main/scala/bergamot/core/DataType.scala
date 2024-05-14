@@ -23,6 +23,7 @@ object DataType {
   def opcode = UInt(7.W) // 7-bits opcode
   def instruction = word // instruction
   def register = UInt(6.W) // 6-bits register(combined with f registers) id
+  def register5 = UInt(5.W) // 5-bits register id
   def func3 = UInt(3.W) // 3-bits func3
   def func7 = UInt(7.W) // 7-bits func7
   def immediate = word // raw immediate

@@ -27,7 +27,7 @@ class AXIMasterIO extends Bundle {
   val AWVALID = Output(Bool())
   val AWREADY = Input(Bool())
   val AWADDR = Output(UInt(AXISpec.addressWidth.W))
-  val AWPORT = Output(UInt(AXISpec.portWidth.W))
+  val AWPROT = Output(UInt(AXISpec.portWidth.W))
 
   // Write data channel (W)
   val WVALID = Output(Bool())
@@ -44,7 +44,7 @@ class AXIMasterIO extends Bundle {
   val ARVALID = Output(Bool())
   val ARREADY = Input(Bool())
   val ARADDR = Output(UInt(AXISpec.addressWidth.W))
-  val ARPORT = Output(UInt(AXISpec.portWidth.W))
+  val ARPROT = Output(UInt(AXISpec.portWidth.W))
 
   // Read data channel (R)
   val RVALID = Input(Bool())
