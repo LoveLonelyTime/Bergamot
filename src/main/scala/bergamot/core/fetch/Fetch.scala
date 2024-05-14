@@ -338,9 +338,9 @@ class InstructionExtender extends Module {
     val instructionOut = WireInit(instructionIn)
     val imm = WireInit(DataType.immediate.zeroAsUInt)
     val simm = WireInit(DataType.immediate.zeroAsUInt)
-    val rs1 = WireInit(DataType.register.zeroAsUInt)
-    val rs2 = WireInit(DataType.register.zeroAsUInt)
-    val rd = WireInit(DataType.register.zeroAsUInt)
+    val rs1 = WireInit(DataType.register5.zeroAsUInt)
+    val rs2 = WireInit(DataType.register5.zeroAsUInt)
+    val rd = WireInit(DataType.register5.zeroAsUInt)
 
     switch(instructionIn(1, 0)) {
       is("b01".U) {

@@ -34,7 +34,7 @@ class AXIInterconnect(memoryMap: Seq[String]) extends Module {
   io.slaves.zip(readGrantReg).zip(memoryPairMap).foreach { case ((slave, grant), (startAddress, endAddress)) =>
     when(io.master.ARADDR >= startAddress.U && (if (endAddress == "#") true.B else io.master.ARADDR < endAddress.U)) {
       slave.ARADDR := io.master.ARADDR
-      slave.ARPORT := io.master.ARPORT
+      slave.ARPROT := io.master.ARPROT
       slave.ARVALID := io.master.ARVALID
       io.master.ARREADY := slave.ARREADY
 
@@ -61,7 +61,7 @@ class AXIInterconnect(memoryMap: Seq[String]) extends Module {
   io.slaves.zip(writeGrantReg).zip(memoryPairMap).foreach { case ((slave, grant), (startAddress, endAddress)) =>
     when(io.master.AWADDR >= startAddress.U && (if (endAddress == "#") true.B else io.master.AWADDR < endAddress.U)) {
       slave.AWADDR := io.master.AWADDR
-      slave.AWPORT := io.master.AWPORT
+      slave.AWPROT := io.master.AWPROT
       slave.AWVALID := io.master.AWVALID
       io.master.AWREADY := slave.AWREADY
 
