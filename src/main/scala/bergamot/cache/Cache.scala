@@ -115,7 +115,7 @@ class SetCache(wayDepth: Int, cacheLineDepth: Int, cacheCellDepth: Int) extends 
   switch(statusReg) {
     is(Status.idle) {
       // Priority: Flush >| Read > Write
-      when(io.flush.req) {
+      when(io.flush.req && !flushWorkingReg) {
         flushWorkingReg := true.B
         flushReg := 0.U
       }
