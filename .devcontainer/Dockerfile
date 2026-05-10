@@ -14,6 +14,8 @@ RUN apt-get install -y \
     git \
     curl \
     wget \
+    xz-utils \
+    ca-certificates \
     vim
 
 # OpenJDK 17
@@ -73,15 +75,27 @@ RUN git clone https://github.com/verilator/verilator /tmp/verilator \
     && make install \
     && rm -rf /tmp/verilator
 
+# Install riscv-gnu-toolchain
+RUN wget -O /tmp/riscv32-toolchain.tar.xz \
+    https://toolchains.bootlin.com/downloads/releases/toolchains/riscv32-ilp32d/tarballs/riscv32-ilp32d--glibc--stable-2025.08-1.tar.xz \
+    && mkdir -p /opt/riscv32-ilp32d \
+    && tar -xJf /tmp/riscv32-toolchain.tar.xz \
+    -C /opt/riscv32-ilp32d \
+    --strip-components=1 \
+    && rm /tmp/riscv32-toolchain.tar.xz
+
+ENV PATH="/opt/riscv32-ilp32d/bin:${PATH}"
+
 # Check
-RUN scala -version && \
-    scalac -version && \
-    mill --version && \
-    verilator --version && \
-    dtc --version && \
-    java -version && \
-    gcc --version && \
-    make --version
+RUN scala -version \
+    && scalac -version \
+    && mill --version \
+    && verilator --version \
+    && dtc --version \
+    && java -version \
+    && gcc --version \
+    && make --version \
+    && riscv32-buildroot-linux-gnu-gcc --version
 
 # Setup workplace
 WORKDIR /workspace

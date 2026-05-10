@@ -13,16 +13,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Cleanup
-        run: sed -i "s/%NAME%/test/g" build.sc
       - name: Cache Scala
-        uses: coursier/cache-action@v6
+        uses: coursier/cache-action@v8
       - name: Setup Scala
-        uses: coursier/setup-action@v1
+        uses: coursier/setup-action@v3
         with:
           jvm: adopt:11
           apps: sbt mill
-      # - name: SBT Test
-      #   run: sbt test
-      # - name: mill Test
-      #   run: mill _.test
+      - name: Compile
+        run: make verilogsim

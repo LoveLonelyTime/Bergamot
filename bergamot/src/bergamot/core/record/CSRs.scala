@@ -603,13 +603,13 @@ class MonitorRegister(privilege: PrivilegeType.Type, instretVal: UInt, mtime: UI
   private val scounterenReg = RegInit(DataType.operation.zeroAsUInt)
 
   private val cycleCounter: UInt = RegInit(0.U(64.W))
-  when(!mcountinhibitReg(1)) {
+  when(!mcountinhibitReg(0)) {
     cycleCounter := cycleCounter + 1.U
   }
 
   private val instretCounter: UInt = RegInit(0.U(64.W))
   when(!mcountinhibitReg(2)) {
-    instretCounter + instretVal
+    instretCounter := instretCounter + instretVal
   }
 
   val mcycle = ReadAndWriteRegister(() => cycleCounter(31, 0), data => cycleCounter := cycleCounter(63, 32) ## data)

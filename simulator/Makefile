@@ -5,8 +5,8 @@
 VERILATOR ?= verilator
 DTC ?= dtc
 
-CFLAGS += -DDUMP_MEM
-VERILATOR_FLAG += --cc -CFLAGS $(CFLAGS) --exe --build --trace -Wno-WIDTH
+CFLAGS += -DDUMP_MEM -O3 -march=native
+VERILATOR_FLAG += --cc -CFLAGS "$(CFLAGS)" -O3 --exe --build --trace -Wno-WIDTH -I../build/sim/
 
 # The default "make all" rule
 .PHONY: all
@@ -19,7 +19,7 @@ clean:
 	$(RM) -r obj_dir
 
 # Call verilator
-obj_dir/VVerilatorTestCore: sim_main.cpp VerilatorTestCore.sv
+obj_dir/VVerilatorTestCore: sim_main.cpp ../build/sim/VerilatorTestCore.sv
 	$(VERILATOR) $(VERILATOR_FLAG)  $^
 
 # Compile dtb
