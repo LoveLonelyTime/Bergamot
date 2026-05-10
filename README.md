@@ -29,7 +29,7 @@ And is trying to maintain simplicity as much as possible.
 Interesting? Check out our [Trip](https://lovelonelytime.github.io/Bergamot-doc/)!
 
 ## Installation
-- **💡 Recommendation:** For the easiest setup, use our provided Dev Docker container (.devcontainer). If you prefer a local installation, please refer to the [Chisel Installation Guide](https://www.chisel-lang.org/docs/installation).
+- **💡 Recommendation:** For the easiest setup, use our provided Dev Docker container (`.devcontainer`) or pull the prebuilt image via `docker pull ghcr.io/lovelonelytime/bergamot-build:latest`. If you prefer a local installation, please refer to the [Chisel Installation Guide](https://www.chisel-lang.org/docs/installation).
 
 ## Usage
 
