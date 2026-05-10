@@ -6,15 +6,12 @@ on:
     branches: ['main']
   pull_request:
 
-env:
-  IMAGE_NAME: bergamot-build
-
 jobs:
   ci:
     name: ci
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/${{ github.repository_owner }}/$IMAGE_NAME
+      image: ghcr.io/${{ github.repository_owner }}/bergamot-build
     steps:
       - uses: actions/checkout@v6
       - name: Compile
