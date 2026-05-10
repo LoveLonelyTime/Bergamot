@@ -11,7 +11,7 @@ jobs:
     name: ci
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/${{ github.repository_owner }}/bergamot-build
+      image: ghcr.io/lovelonelytime/bergamot-build:latest
     steps:
       - uses: actions/checkout@v6
       - name: Compile
