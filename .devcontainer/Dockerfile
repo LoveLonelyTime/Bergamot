@@ -48,6 +48,8 @@ RUN curl -L https://repo1.maven.org/maven2/com/lihaoyi/mill-dist/1.1.5/mill-dist
 # Install riscv-toolchain
 COPY riscv-toolchain/ /opt/riscv-toolchain/
 
+RUN chmod -R +x /opt/riscv-toolchain/bin
+
 ENV PATH="/opt/riscv-toolchain/bin:${PATH}"
 
 # Check
