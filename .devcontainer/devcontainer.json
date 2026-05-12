@@ -1,8 +1,6 @@
 {
     "name": "Bergamot Dev Container",
-    "build": {
-        "dockerfile": "Dockerfile"
-    },
+    "image": "ghcr.io/lovelonelytime/bergamot-build:latest",
     "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
     "workspaceFolder": "/workspace",
     "customizations": {

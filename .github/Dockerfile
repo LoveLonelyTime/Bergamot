@@ -63,7 +63,7 @@ RUN scala -version \
     && make --version \
     && riscv32-unknown-linux-gnu-gcc --version
 
-# Setup workplace
+# Setup workspace
 WORKDIR /workspace
 
 # Keep alive
