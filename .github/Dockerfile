@@ -1,28 +1,76 @@
 FROM ubuntu:latest
 
 ENV DEBIAN_FRONTEND=noninteractive
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
 
 RUN apt-get update
 
 # C/C++
 RUN apt-get install -y \
     build-essential \
-    g++ \
     gcc \
+    g++ \
+    clang \
+    lld \
+    llvm \
     make \
+    ninja-build \
     cmake \
+    pkg-config \
     git \
     curl \
     wget \
+    rsync \
+    unzip \
+    zip \
     xz-utils \
+    zstd \
+    file \
+    patch \
+    bc \
+    jq \
+    perl \
+    bison \
+    flex \
+    cpio \
+    kmod \
+    libssl-dev \
+    libelf-dev \
+    libncurses-dev \
+    dwarves \
+    pahole \
+    device-tree-compiler \
+    u-boot-tools \
+    autoconf \
+    automake \
+    libtool \
+    texinfo \
+    gperf \
+    python3 \
+    python3-pip \
+    python3-venv \
+    python3-setuptools \
+    gdb \
+    strace \
+    ltrace \
+    perf-tools-unstable \
     ca-certificates \
-    vim
+    vim \
+    nano \
+    less \
+    htop \
+    tmux
 
 # OpenJDK 17
 RUN apt-get install -y openjdk-17-jdk
 
 # Verilator
 RUN apt-get install -y verilator
+
+# QEMU
+RUN apt-get install -y qemu-system \
+    qemu-user
 
 # Gtkwave
 RUN apt-get install -y gtkwave
@@ -61,6 +109,7 @@ RUN scala -version \
     && java -version \
     && gcc --version \
     && make --version \
+    && qemu-system-riscv32 --version \
     && riscv32-unknown-linux-gnu-gcc --version
 
 # Setup workspace
