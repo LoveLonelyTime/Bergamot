@@ -1,4 +1,4 @@
-FROM ubuntu:22.04
+FROM ubuntu:latest
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -22,33 +22,13 @@ RUN apt-get install -y \
 RUN apt-get install -y openjdk-17-jdk
 
 # Verilator
-RUN apt-get install -y \
-    help2man \
-    perl \
-    python3 \
-    autoconf \
-    flex \
-    bison \
-    ccache \
-    libgoogle-perftools-dev \
-    libjemalloc-dev \
-    numactl \
-    perl-doc
-
-RUN (apt-get install -y libfl2 || echo "libfl2 not available, skipping") && \
-    (apt-get install -y libfl-dev || echo "libfl-dev not available, skipping") && \
-    (apt-get install -y zlibc zlib1g zlib1g-dev || echo "zlib packages not available, skipping")
+RUN apt-get install -y verilator
 
 # Gtkwave
 RUN apt-get install -y gtkwave
 
 # DTC
 RUN apt-get install -y device-tree-compiler
-
-# Others
-RUN apt-get install -y \
-    pkg-config \
-    libtool
 
 RUN rm -rf /var/lib/apt/lists/*
 
@@ -65,26 +45,10 @@ RUN curl -L https://repo1.maven.org/maven2/com/lihaoyi/mill-dist/1.1.5/mill-dist
     && chmod +x mill \
     && mv mill /usr/local/bin/mill
 
-# Install Verilator
-RUN git clone https://github.com/verilator/verilator /tmp/verilator \
-    && cd /tmp/verilator \
-    && git checkout stable \
-    && autoconf \
-    && ./configure \
-    && make -j $(nproc) \
-    && make install \
-    && rm -rf /tmp/verilator
+# Install riscv-toolchain
+COPY riscv-toolchain/ /opt/riscv-toolchain/
 
-# Install riscv-gnu-toolchain
-RUN wget -O /tmp/riscv32-toolchain.tar.xz \
-    https://toolchains.bootlin.com/downloads/releases/toolchains/riscv32-ilp32d/tarballs/riscv32-ilp32d--glibc--stable-2025.08-1.tar.xz \
-    && mkdir -p /opt/riscv32-ilp32d \
-    && tar -xJf /tmp/riscv32-toolchain.tar.xz \
-    -C /opt/riscv32-ilp32d \
-    --strip-components=1 \
-    && rm /tmp/riscv32-toolchain.tar.xz
-
-ENV PATH="/opt/riscv32-ilp32d/bin:${PATH}"
+ENV PATH="/opt/riscv-toolchain/bin:${PATH}"
 
 # Check
 RUN scala -version \
@@ -95,7 +59,7 @@ RUN scala -version \
     && java -version \
     && gcc --version \
     && make --version \
-    && riscv32-buildroot-linux-gnu-gcc --version
+    && riscv32-unknown-linux-gnu-gcc --version
 
 # Setup workplace
 WORKDIR /workspace

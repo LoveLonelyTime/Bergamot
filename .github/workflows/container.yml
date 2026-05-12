@@ -13,6 +13,10 @@ on:
       - '.devcontainer/**'
       - 'Dockerfile'
       - '.github/workflows/container.yml'
+  workflow_run:
+    workflows: [Build RISC-V Linux GLIBC Cross Compiler]
+    types:
+      - completed
   workflow_dispatch:
 
 env:
@@ -26,7 +30,14 @@ jobs:
       packages: write
       contents: read
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout repo
+        uses: actions/checkout@v6
+      - name: Download compiler
+        uses: dawidd6/action-download-artifact@v21
+        with:
+          workflow: compiler.yml
+          name: riscv-linux-rv32gc-ilp32
+          path: ./riscv-toolchain
       - name: Build image
         run: docker build . --file .devcontainer/Dockerfile --tag $IMAGE_NAME --label "runnumber=${GITHUB_RUN_ID}"
       - name: Log in to registry

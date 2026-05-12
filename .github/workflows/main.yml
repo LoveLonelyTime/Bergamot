@@ -13,6 +13,7 @@ jobs:
     container:
       image: ghcr.io/lovelonelytime/bergamot-build:latest
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout repo
+        uses: actions/checkout@v6
       - name: Compile
         run: make verilogsim
